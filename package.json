@@ -1,0 +1,54 @@
+{
+  "name": "controlhub-desktop",
+  "productName": "ControlHub",
+  "version": "0.1.0",
+  "description": "ControlHub AA26 desktop app - real-time motor telemetry and configuration",
+  "main": "./out/main/index.js",
+  "author": {
+    "name": "rwabc",
+    "email": "rwabcdef1234@gmail.com"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "mqtt": "^5.16.0",
+    "serialport": "^13.0.0"
+  },
+  "devDependencies": {
+    "@electron-toolkit/tsconfig": "^2.0.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.4.0",
+    "@mui/material": "^9.4.0",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^8.4.0",
+    "typescript": "^5.9.3",
+    "uplot": "^1.6.32",
+    "vite": "^7.3.6",
+    "zustand": "^5.0.15"
+  },
+  "allowScripts": {
+    "electron@44.4.5": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true,
+    "@serialport/bindings-cpp@13.0.0": true
+  }
+}

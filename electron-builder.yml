@@ -1,0 +1,37 @@
+appId: com.controlhub.aa26.desktop
+productName: ControlHub
+directories:
+  buildResources: build
+  output: release/${version}
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+# serialport ships N-API prebuilds (win/linux x64+arm64), so no native compile is needed.
+npmRebuild: false
+electronLanguages: [en-US]
+asarUnpack:
+  - '**/*.node'
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+# Used by `electron-builder --publish always` in the GitHub Actions release workflow.
+# owner/repo are inferred from the git remote.
+publish:
+  provider: github
+  releaseType: draft
