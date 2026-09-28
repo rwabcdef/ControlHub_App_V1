@@ -3,6 +3,8 @@ import type { MotorField, MotorSample } from '@shared/types'
 /** Keep up to this many samples (e.g. 60 s at 1 kHz). */
 const MAX_POINTS = 60_000
 
+const orNull = (v: number): number | null => (Number.isFinite(v) ? v : null)
+
 /**
  * High-rate telemetry buffer that lives OUTSIDE React state.
  *
@@ -15,9 +17,10 @@ const MAX_POINTS = 60_000
 class TelemetryStore {
   /** Columnar arrays, time in seconds - the layout uPlot consumes directly */
   readonly t: number[] = []
-  readonly rpm: number[] = []
-  readonly duty: number[] = []
-  readonly current: number[] = []
+  /** null where the source didn't report the value (drawn as a gap) */
+  readonly rpm: (number | null)[] = []
+  readonly duty: (number | null)[] = []
+  readonly current: (number | null)[] = []
 
   latest: MotorSample | null = null
   /** Measured incoming sample rate, Hz */
@@ -33,9 +36,9 @@ class TelemetryStore {
   push(batch: MotorSample[]): void {
     for (const s of batch) {
       this.t.push(s.t / 1000)
-      this.rpm.push(s.rpm)
-      this.duty.push(s.duty)
-      this.current.push(s.current)
+      this.rpm.push(orNull(s.rpm))
+      this.duty.push(orNull(s.duty))
+      this.current.push(orNull(s.current))
     }
     // Trim in chunks so the O(n) splice is amortised.
     const excess = this.t.length - MAX_POINTS
@@ -60,7 +63,7 @@ class TelemetryStore {
     this.version++
   }
 
-  series(field: MotorField): number[] {
+  series(field: MotorField): (number | null)[] {
     return this[field]
   }
 

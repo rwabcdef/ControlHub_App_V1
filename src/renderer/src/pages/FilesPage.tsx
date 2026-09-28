@@ -80,7 +80,8 @@ export function FilesPage(): React.JSX.Element {
     if (!root) return
     const lines = ['t_s,rpm,duty_pct,current_a']
     for (let i = 0; i < telemetry.t.length; i++) {
-      lines.push(`${telemetry.t[i].toFixed(4)},${telemetry.rpm[i].toFixed(1)},${telemetry.duty[i].toFixed(2)},${telemetry.current[i].toFixed(4)}`)
+      const fmt = (v: number | null, d: number): string => v?.toFixed(d) ?? ''
+      lines.push(`${telemetry.t[i].toFixed(4)},${fmt(telemetry.rpm[i], 1)},${fmt(telemetry.duty[i], 2)},${fmt(telemetry.current[i], 4)}`)
     }
     const rel = join(dir, `telemetry-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`)
     window.api.fs.writeText(root, rel, lines.join('\n')).then(() => {

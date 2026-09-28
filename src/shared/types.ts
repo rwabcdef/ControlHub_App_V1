@@ -7,7 +7,7 @@ export interface MotorSample {
   rpm: number
   /** PWM duty cycle, 0-100 % */
   duty: number
-  /** Motor current, A */
+  /** Motor current, A (NaN if the source doesn't report it) */
   current: number
 }
 
@@ -60,11 +60,12 @@ export interface DirEntry {
 }
 
 export const DEFAULT_COMMS_CONFIG: CommsConfig = {
-  kind: 'sim',
+  kind: 'mqtt',
   serial: { path: '', baudRate: 115200 },
   mqtt: {
-    url: 'mqtt://localhost:1883',
-    telemetryTopic: 'controlhub/motor/telemetry',
+    // ControlHubAA26 hub: MQTT_BROKER_IP / MQTT2_TOPIC_UP in main_tasks.cpp
+    url: 'mqtt://192.168.0.196:1883',
+    telemetryTopic: 'hub/aa26/serlink/up',
     commandTopic: 'controlhub/motor/cmd'
   }
 }

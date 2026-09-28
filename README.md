@@ -10,8 +10,9 @@ npm install
 npm run dev        # hot-reloading dev app (renderer HMR, main/preload auto-restart)
 ```
 
-Connect with the **Simulator** (default) to see live data without hardware.
-Switch to Serial or MQTT under **Config → Communications**.
+Press **Connect** to subscribe to the hub over MQTT (default: `mqtt://192.168.0.196:1883`,
+topic `hub/aa26/serlink/up`). To see data without hardware, choose **Simulator** under
+**Config → Communications**.
 
 > Running from the VS Code integrated terminal: if Electron starts as plain Node
 > ("Cannot find module 'electron'"), the terminal has `ELECTRON_RUN_AS_NODE=1` set.

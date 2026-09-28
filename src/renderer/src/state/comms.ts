@@ -10,7 +10,7 @@ interface CommsStore {
 
 /** Low-rate connection status (React state is fine here, unlike the telemetry stream). */
 export const useComms = create<CommsStore>(() => ({
-  state: { status: 'disconnected', kind: 'sim' },
+  state: { status: 'disconnected', kind: 'mqtt' },
   connect: () => window.api.comms.connect(),
   disconnect: () => window.api.comms.disconnect()
 }))

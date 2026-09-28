@@ -51,14 +51,16 @@ export function Gauge(props: GaugeProps): React.JSX.Element {
   const angle = (v: number): number => START + frac(v) * SWEEP
 
   useTelemetryFrame(() => {
-    const v = telemetry.latest?.[field] ?? min
+    const latest = telemetry.latest?.[field]
+    const has = latest !== undefined && Number.isFinite(latest)
+    const v = has ? latest : min
     const f = frac(v)
     needleRef.current?.setAttribute('transform', `rotate(${START + f * SWEEP} ${CX} ${CY})`)
     valueArcRef.current?.setAttribute('stroke-dasharray', `${f * 1000} 1000`)
     const now = performance.now()
     if (textRef.current && now - lastText.current > TEXT_INTERVAL_MS) {
       lastText.current = now
-      textRef.current.textContent = telemetry.latest ? v.toFixed(decimals) : '—'
+      textRef.current.textContent = has ? v.toFixed(decimals) : '—'
     }
   })
 
