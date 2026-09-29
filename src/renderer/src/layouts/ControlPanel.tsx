@@ -6,17 +6,24 @@ import { errorMessage } from '../util'
 
 /**
  * Right column: motor commands. Commands are plain text lines sent to the device;
- * the formats below are placeholders matching the simulator - adapt to your firmware.
+ * the buttons' formats are placeholders matching the simulator. Over serial / MQTT
+ * a raw command is sent to the hub's CTRL0 socket (e.g. BR0120), or as is if it's a
+ * complete SerLink frame (e.g. CTRL0T516006BR0120).
  */
 export function ControlPanel(): React.JSX.Element {
   const connected = useComms((s) => s.state.status === 'connected')
   const [duty, setDuty] = useState(40)
   const [raw, setRaw] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [reply, setReply] = useState<string | null>(null)
 
   const send = (text: string): void => {
     setError(null)
-    window.api.comms.send(text).catch((e) => setError(errorMessage(e)))
+    setReply(null)
+    window.api.comms
+      .send(text)
+      .then((r) => setReply(r ?? null))
+      .catch((e) => setError(errorMessage(e)))
   }
 
   return (
@@ -50,6 +57,7 @@ export function ControlPanel(): React.JSX.Element {
         </Stack>
       </form>
 
+      {reply && <Alert severity="info" variant="outlined" onClose={() => setReply(null)}>Reply: {reply}</Alert>}
       {error && <Alert severity="error" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
     </Stack>
   )

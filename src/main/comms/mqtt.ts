@@ -1,13 +1,20 @@
 import { connect, MqttClient } from 'mqtt'
 import { MqttConfig } from '@shared/types'
-import { parseLine } from './parser'
+import { HubLink } from './hubLink'
 import { Transport, TransportEvents } from './transport'
 
 const CONNECT_TIMEOUT_MS = 5000
 
-/** MQTT transport: telemetry payloads may contain one or more newline-separated lines. */
+/**
+ * MQTT transport: SerLink over MQTT, as the hub's SerLinkMqttAdapter. Each
+ * payload is a serialised frame exactly as it would appear on the uart (hub
+ * publishes on telemetryTopic, subscribes to commandTopic). A payload may
+ * hold several newline-separated lines; non-SerLink lines are parsed as
+ * plain JSON / CSV telemetry.
+ */
 export class MqttTransport implements Transport {
   private client: MqttClient | null = null
+  private link: HubLink | null = null
 
   constructor(
     private readonly cfg: MqttConfig,
@@ -15,6 +22,10 @@ export class MqttTransport implements Transport {
   ) {}
 
   open(): Promise<void> {
+    // Brokers deliver to the publisher too, so we'd receive (and ack) our own frames.
+    if (this.cfg.telemetryTopic === this.cfg.commandTopic) {
+      return Promise.reject(new Error('Telemetry and command topics must differ'))
+    }
     const client = connect(this.cfg.url, {
       username: this.cfg.username || undefined,
       password: this.cfg.password || undefined,
@@ -23,11 +34,15 @@ export class MqttTransport implements Transport {
     })
     this.client = client
 
-    client.on('message', (_topic, payload) => {
-      for (const line of payload.toString().split('\n')) {
-        const s = parseLine(line)
-        if (s) this.ev.sample(s)
-      }
+    const link = new HubLink(async (line) => {
+      if (!client.connected) throw new Error('MQTT not connected')
+      await client.publishAsync(this.cfg.commandTopic, line + '\n')
+    }, this.ev)
+    this.link = link
+
+    client.on('message', (topic, payload) => {
+      if (topic !== this.cfg.telemetryTopic) return
+      for (const line of payload.toString().split('\n')) link.receiveLine(line)
     })
 
     return new Promise((resolve, reject) => {
@@ -58,6 +73,8 @@ export class MqttTransport implements Transport {
   }
 
   async close(): Promise<void> {
+    this.link?.close()
+    this.link = null
     const client = this.client
     this.client = null
     if (!client) return
@@ -65,8 +82,8 @@ export class MqttTransport implements Transport {
     await client.endAsync()
   }
 
-  async send(text: string): Promise<void> {
-    if (!this.client?.connected) throw new Error('MQTT not connected')
-    await this.client.publishAsync(this.cfg.commandTopic, text)
+  send(text: string): Promise<string | undefined> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.send(text)
   }
 }

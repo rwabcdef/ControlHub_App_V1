@@ -90,11 +90,11 @@ export function CommsConfigPage(): React.JSX.Element {
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Telemetry topic" value={cfg.mqtt.telemetryTopic}
-                onChange={(e) => setMqtt({ telemetryTopic: e.target.value })} />
+                onChange={(e) => setMqtt({ telemetryTopic: e.target.value })} helperText="SerLink up: hub → app" />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Command topic" value={cfg.mqtt.commandTopic}
-                onChange={(e) => setMqtt({ commandTopic: e.target.value })} />
+                onChange={(e) => setMqtt({ commandTopic: e.target.value })} helperText="SerLink down: app → hub" />
             </Grid>
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField fullWidth label="Username" value={cfg.mqtt.username ?? ''} onChange={(e) => setMqtt({ username: e.target.value })} />

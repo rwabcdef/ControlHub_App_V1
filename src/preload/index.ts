@@ -27,7 +27,8 @@ const api = {
     /** Connect using `cfg`, or the saved config if omitted */
     connect: (cfg?: CommsConfig): Promise<void> => ipcRenderer.invoke(IPC.commsConnect, cfg),
     disconnect: (): Promise<void> => ipcRenderer.invoke(IPC.commsDisconnect),
-    send: (text: string): Promise<void> => ipcRenderer.invoke(IPC.commsSend, text),
+    /** Resolves with any reply data, e.g. piggybacked on a SerLink ack */
+    send: (text: string): Promise<string | undefined> => ipcRenderer.invoke(IPC.commsSend, text),
     onSamples: (cb: (batch: MotorSample[]) => void) => on(IPC.commsSamples, cb),
     onState: (cb: (state: CommsState) => void) => on(IPC.commsState, cb)
   },

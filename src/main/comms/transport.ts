@@ -17,6 +17,6 @@ export interface TransportEvents {
 export interface Transport {
   open(): Promise<void>
   close(): Promise<void>
-  /** Send one text command line to the device */
-  send(text: string): Promise<void>
+  /** Send one text command line to the device; resolves with any reply data (e.g. from a SerLink ack) */
+  send(text: string): Promise<string | undefined>
 }

@@ -32,7 +32,7 @@ export class SimTransport implements Transport {
     this.timer = null
   }
 
-  async send(text: string): Promise<void> {
+  async send(text: string): Promise<string | undefined> {
     const [cmd, arg] = text.trim().toUpperCase().split(/\s+/)
     if (cmd === 'DUTY' && Number.isFinite(Number(arg))) {
       this.auto = false
@@ -45,6 +45,7 @@ export class SimTransport implements Transport {
     } else {
       throw new Error(`Simulator: unknown command "${text}"`)
     }
+    return undefined
   }
 
   private tick(): void {

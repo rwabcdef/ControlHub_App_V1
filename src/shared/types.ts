@@ -22,9 +22,9 @@ export interface SerialConfig {
 
 export interface MqttConfig {
   url: string
-  /** Topic the device publishes telemetry on */
+  /** Topic the device publishes SerLink frames (telemetry, acks) on */
   telemetryTopic: string
-  /** Topic the app publishes commands on */
+  /** Topic the app publishes SerLink frames (commands, acks) on */
   commandTopic: string
   username?: string
   password?: string
@@ -63,10 +63,10 @@ export const DEFAULT_COMMS_CONFIG: CommsConfig = {
   kind: 'mqtt',
   serial: { path: '', baudRate: 115200 },
   mqtt: {
-    // ControlHubAA26 hub: MQTT_BROKER_IP / MQTT2_TOPIC_UP in main_tasks.cpp
+    // ControlHubAA26 hub: MQTT_BROKER_IP / MQTT2_TOPIC_UP / MQTT2_TOPIC_DOWN in main_tasks.cpp
     url: 'mqtt://192.168.0.196:1883',
     telemetryTopic: 'hub/aa26/serlink/up',
-    commandTopic: 'controlhub/motor/cmd'
+    commandTopic: 'hub/aa26/serlink/down'
   }
 }
 

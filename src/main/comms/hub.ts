@@ -88,9 +88,9 @@ class CommsHub {
     }
   }
 
-  async send(text: string): Promise<void> {
+  async send(text: string): Promise<string | undefined> {
     if (!this.transport) throw new Error('Not connected')
-    await this.transport.send(text)
+    return this.transport.send(text)
   }
 
   private flush(): void {
