@@ -229,6 +229,7 @@ export class SerLink {
         // precedes anything the socket sends in response. Written directly -
         // not queued behind a 'T' frame of ours that may be waiting for its own ack.
         const ack = new Frame(frame.protocol, Frame.TYPE_ACK, frame.rollCode, Frame.ACK_OK)
+        this.debug(`tx ${ack}`)
         this.write(ack.toString()).catch((err) => this.debug(`ack write failed: ${(err as Error).message}`))
         this.deliver(frame)
         break

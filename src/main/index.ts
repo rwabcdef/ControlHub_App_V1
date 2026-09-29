@@ -23,7 +23,11 @@ function createWindow(): void {
     }
   })
 
-  win.once('ready-to-show', () => win.show())
+  win.once('ready-to-show', () => {
+    win.show()
+    // Dev: DevTools in its own window, so the app layout keeps its full width.
+    if (!app.isPackaged) win.webContents.openDevTools({ mode: 'detach' })
+  })
 
   // Open external links in the OS browser, never inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {

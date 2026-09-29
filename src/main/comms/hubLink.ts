@@ -1,10 +1,20 @@
-import { parseCtrlStatus, parseLine } from './parser'
+import { LIFT_DISTANCE_MAX } from '@shared/types'
+import { parseCtrlStatus, parseLiftStatus, parseLine } from './parser'
 import { Frame } from './serlink/Frame'
 import { LineWriter, SendFrameResult, SerLink, Socket } from './serlink/SerLink'
 import { TransportEvents } from './transport'
 
 /** The hub's speed controller socket: status frames in, controller commands out. */
 export const CTRL_PROTOCOL = 'CTRL0'
+/** The hub's lift socket - only on its MQTT link (SerLink2) */
+export const LIFT_PROTOCOL = 'LIFT0'
+/** The only lift on the remote hub */
+const LIFT_ID = 'B'
+
+export interface HubLinkOptions {
+  /** Acquire the LIFT0 socket */
+  lift?: boolean
+}
 
 /**
  * The ControlHubAA26 hub's SerLink sockets over one line-oriented link.
@@ -14,18 +24,25 @@ export const CTRL_PROTOCOL = 'CTRL0'
 export class HubLink {
   readonly serLink: SerLink
   readonly ctrl: Socket
+  readonly lift: Socket | null
 
   constructor(
     write: LineWriter,
-    private readonly ev: TransportEvents
+    private readonly ev: TransportEvents,
+    opts: HubLinkOptions = {}
   ) {
-    this.serLink = new SerLink(write, {
-      debug: process.env.SERLINK_DEBUG ? (msg): void => console.log(`[SerLink] ${msg}`) : undefined
-    })
+    const trace = ev.trace?.bind(ev)
+    this.serLink = new SerLink(write, { debug: trace })
     this.ctrl = this.serLink.acquireSocket(CTRL_PROTOCOL, (frame) => {
       const s = parseCtrlStatus(frame.data)
       if (s) this.ev.sample(s)
     })
+    this.lift = opts.lift
+      ? this.serLink.acquireSocket(LIFT_PROTOCOL, (frame) => {
+          const s = parseLiftStatus(frame.data)
+          if (s) this.ev.lift(s)
+        })
+      : null
   }
 
   /** Handle one received line: a SerLink frame, or else plain JSON / CSV telemetry. */
@@ -47,6 +64,19 @@ export class HubLink {
     const frame = Frame.fromString(cmd)
     const result = frame ? await this.serLink.sendFrame(frame) : await this.ctrl.sendData(cmd, true)
     return checkResult(frame ? frame.protocol : CTRL_PROTOCOL, result)
+  }
+
+  /**
+   * Start the lift forward for `distance` edges, e.g. LIFT0U645006BSF234.
+   * Sent as 'U', so this only confirms the frame was published; the hub
+   * reports the move's end with an idle status frame.
+   */
+  async liftStart(distance: number): Promise<void> {
+    if (!this.lift) throw new Error(`${LIFT_PROTOCOL} is only available over MQTT`)
+    if (!Number.isInteger(distance) || distance < 1 || distance > LIFT_DISTANCE_MAX) {
+      throw new Error(`Lift distance must be a whole number from 1 to ${LIFT_DISTANCE_MAX}`)
+    }
+    checkResult(LIFT_PROTOCOL, await this.lift.sendData(`${LIFT_ID}SF${distance}`, false))
   }
 
   close(): void {

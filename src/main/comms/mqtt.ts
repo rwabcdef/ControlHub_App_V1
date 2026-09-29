@@ -37,7 +37,7 @@ export class MqttTransport implements Transport {
     const link = new HubLink(async (line) => {
       if (!client.connected) throw new Error('MQTT not connected')
       await client.publishAsync(this.cfg.commandTopic, line + '\n')
-    }, this.ev)
+    }, this.ev, { lift: true })
     this.link = link
 
     client.on('message', (topic, payload) => {
@@ -85,5 +85,10 @@ export class MqttTransport implements Transport {
   send(text: string): Promise<string | undefined> {
     if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
     return this.link.send(text)
+  }
+
+  liftStart(distance: number): Promise<void> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.liftStart(distance)
   }
 }

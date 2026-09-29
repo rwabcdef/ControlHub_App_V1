@@ -1,4 +1,4 @@
-import { ipcMain, WebContents } from 'electron'
+import { app, ipcMain, WebContents } from 'electron'
 import { CommsConfig, CommsState, IPC, MotorSample } from '@shared/types'
 import { getSettings, updateSettings } from '../settings'
 import { MqttTransport } from './mqtt'
@@ -10,6 +10,8 @@ import { Transport, TransportEvents } from './transport'
 const FLUSH_MS = 16
 /** Drop the oldest samples if the renderer stalls, rather than growing without bound. */
 const MAX_PENDING = 20_000
+/** Trace SerLink traffic to the terminal and the renderer's DevTools console: in dev, or with SERLINK_DEBUG set. */
+const SERLINK_TRACE = !app.isPackaged || !!process.env.SERLINK_DEBUG
 
 /**
  * Owns the active transport and forwards telemetry to the renderer.
@@ -49,6 +51,17 @@ class CommsHub {
         this.pending.push({ ...s, t: s.t ?? performance.now() - this.t0 })
         if (this.pending.length > MAX_PENDING) this.pending.splice(0, this.pending.length - MAX_PENDING)
       },
+      lift: (s) => {
+        if (live() && this.target && !this.target.isDestroyed()) this.target.send(IPC.liftStatus, s)
+      },
+      trace: SERLINK_TRACE
+        ? (msg): void => {
+            if (!live()) return
+            const line = `${new Date().toISOString().slice(11, 23)} ${cfg.kind} ${msg}`
+            console.log(`[SerLink] ${line}`)
+            if (this.target && !this.target.isDestroyed()) this.target.send(IPC.serlinkTrace, line)
+          }
+        : undefined,
       error: (err) => live() && this.setState({ status: 'error', kind: cfg.kind, error: err.message }),
       reconnected: () => live() && this.setState({ status: 'connected', kind: cfg.kind }),
       close: () => {
@@ -93,6 +106,12 @@ class CommsHub {
     return this.transport.send(text)
   }
 
+  async liftStart(distance: number): Promise<void> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.liftStart) throw new Error('Lift control needs an MQTT connection')
+    await this.transport.liftStart(distance)
+  }
+
   private flush(): void {
     if (this.pending.length === 0) return
     const batch = this.pending
@@ -116,4 +135,5 @@ export function registerCommsIpc(): void {
   ipcMain.handle(IPC.commsConnect, (_e, cfg?: CommsConfig) => commsHub.connect(cfg ?? getSettings().comms))
   ipcMain.handle(IPC.commsDisconnect, () => commsHub.disconnect())
   ipcMain.handle(IPC.commsSend, (_e, text: string) => commsHub.send(String(text)))
+  ipcMain.handle(IPC.liftStart, (_e, distance: number) => commsHub.liftStart(Number(distance)))
 }

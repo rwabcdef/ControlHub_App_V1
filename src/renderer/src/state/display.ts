@@ -8,6 +8,8 @@ export interface DisplaySettings {
   windowSec: number
   leftPanelOpen: boolean
   rightPanelOpen: boolean
+  /** Dashboard's Control panel */
+  dashControlOpen: boolean
 }
 
 interface DisplayStore extends DisplaySettings {
@@ -19,7 +21,8 @@ export const DISPLAY_DEFAULTS: DisplaySettings = {
   currentMax: 5,
   windowSec: 10,
   leftPanelOpen: true,
-  rightPanelOpen: true
+  rightPanelOpen: true,
+  dashControlOpen: true
 }
 
 /** UI preferences, persisted per machine in localStorage. */

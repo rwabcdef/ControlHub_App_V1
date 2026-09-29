@@ -4,6 +4,7 @@ import SpeedIcon from '@mui/icons-material/Speed'
 import TuneIcon from '@mui/icons-material/Tune'
 import FolderIcon from '@mui/icons-material/Folder'
 import ViewSidebarIcon from '@mui/icons-material/ViewSidebar'
+import VerticalSplitIcon from '@mui/icons-material/VerticalSplit'
 import { useComms } from '../state/comms'
 import { useDisplay } from '../state/display'
 import { ConnectionPanel } from './ConnectionPanel'
@@ -26,7 +27,7 @@ const STATUS_COLOR = { connected: 'success', connecting: 'info', error: 'error',
 export function MainLayout(): React.JSX.Element {
   const { pathname } = useLocation()
   const comms = useComms((s) => s.state)
-  const { leftPanelOpen, rightPanelOpen, set } = useDisplay()
+  const { leftPanelOpen, rightPanelOpen, dashControlOpen, set } = useDisplay()
   const active = NAV.slice().reverse().find((n) => (n.to === '/' ? pathname === '/' : pathname.startsWith(n.to)))
 
   return (
@@ -48,13 +49,21 @@ export function MainLayout(): React.JSX.Element {
               <ViewSidebarIcon fontSize="small" sx={{ transform: 'scaleX(-1)' }} />
             </IconButton>
           </Tooltip>
+          {active?.to === '/' && (
+            <Tooltip title="Toggle Control panel">
+              <IconButton size="small" color={dashControlOpen ? 'primary' : 'default'}
+                onClick={() => set({ dashControlOpen: !dashControlOpen })}>
+                <VerticalSplitIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           <Typography variant="h6" sx={{ fontSize: 16, fontWeight: 600 }}>
             ControlHub <Typography component="span" color="text.secondary">AA26</Typography>
           </Typography>
           <Box sx={{ flex: 1 }} />
           <Chip size="small" variant="outlined" color={STATUS_COLOR[comms.status]}
             label={`${comms.kind.toUpperCase()} · ${comms.status}`} />
-          <Tooltip title="Toggle control panel">
+          <Tooltip title="Toggle motor control panel">
             <IconButton size="small" onClick={() => set({ rightPanelOpen: !rightPanelOpen })}>
               <ViewSidebarIcon fontSize="small" />
             </IconButton>

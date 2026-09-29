@@ -11,6 +11,20 @@ export interface MotorSample {
   current: number
 }
 
+/** A lift's state, from the hub's LIFT0 socket, e.g. BI000234.000234 */
+export interface LiftStatus {
+  /** Lift id, e.g. 'B' */
+  lift: string
+  moving: boolean
+  /** Edges travelled since the last start */
+  travelled: number
+  /** That start's target, edges */
+  target: number
+}
+
+/** Lift start distance range, edges (the hub takes 1..6 digits) */
+export const LIFT_DISTANCE_MAX = 999_999
+
 export type MotorField = Exclude<keyof MotorSample, 't'>
 
 export type CommsKind = 'sim' | 'serial' | 'mqtt'
@@ -82,6 +96,11 @@ export const IPC = {
   commsSamples: 'comms:samples',
   /** main -> renderer: CommsState */
   commsState: 'comms:state',
+  liftStart: 'lift:start',
+  /** main -> renderer: LiftStatus */
+  liftStatus: 'lift:status',
+  /** main -> renderer: one SerLink trace line (dev / SERLINK_DEBUG only) */
+  serlinkTrace: 'serlink:trace',
 
   fsListRoots: 'fs:listRoots',
   fsAddRoot: 'fs:addRoot',

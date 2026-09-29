@@ -3,6 +3,7 @@ import type {
   CommsConfig,
   CommsState,
   DirEntry,
+  LiftStatus,
   MotorSample,
   SerialPortInfo
 } from '../shared/types'
@@ -30,7 +31,15 @@ const api = {
     /** Resolves with any reply data, e.g. piggybacked on a SerLink ack */
     send: (text: string): Promise<string | undefined> => ipcRenderer.invoke(IPC.commsSend, text),
     onSamples: (cb: (batch: MotorSample[]) => void) => on(IPC.commsSamples, cb),
-    onState: (cb: (state: CommsState) => void) => on(IPC.commsState, cb)
+    onState: (cb: (state: CommsState) => void) => on(IPC.commsState, cb),
+    /** SerLink trace lines (dev / SERLINK_DEBUG only) */
+    onTrace: (cb: (line: string) => void) => on(IPC.serlinkTrace, cb)
+  },
+
+  lift: {
+    /** Start the lift forward for `distance` edges (MQTT only) */
+    start: (distance: number): Promise<void> => ipcRenderer.invoke(IPC.liftStart, distance),
+    onStatus: (cb: (status: LiftStatus) => void) => on(IPC.liftStatus, cb)
   },
 
   fs: {
