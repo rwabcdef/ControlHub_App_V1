@@ -4,6 +4,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ConfigLayout } from './pages/config/ConfigLayout'
 import { CommsConfigPage } from './pages/config/CommsConfigPage'
 import { DisplayConfigPage } from './pages/config/DisplayConfigPage'
+import { DevPage } from './pages/DevPage'
 import { FilesPage } from './pages/FilesPage'
 
 // Hash routing works with both the dev server and file:// in packaged builds.
@@ -23,6 +24,7 @@ export const router = createHashRouter([
         ]
       },
       { path: 'files', element: <FilesPage /> },
+      { path: 'dev', element: <DevPage /> },
       { path: '*', element: <Navigate to="/" replace /> }
     ]
   }

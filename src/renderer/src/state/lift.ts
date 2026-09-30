@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { LiftStatus, PingReport } from '@shared/types'
+import type { LiftDirection, LiftStatus, PingReport } from '@shared/types'
 import { errorMessage } from '../util'
 
 /** LIFT0 ping: idle until the first ping, pinging while one is out, else its last outcome */
@@ -11,7 +11,7 @@ interface LiftStore {
   /** Set when the hub reports the lift idle (move ended); cleared by the next start */
   done: boolean
   ping: LiftPingState
-  start: (distance: number) => Promise<void>
+  start: (distance: number, direction: LiftDirection) => Promise<void>
   /** SerLink PING the hub's LIFT0 socket; ignored while one is in progress */
   sendPing: () => Promise<void>
 }
@@ -20,9 +20,9 @@ export const useLift = create<LiftStore>((set, get) => ({
   status: null,
   done: false,
   ping: { phase: 'idle' },
-  start: async (distance) => {
+  start: async (distance, direction) => {
     set({ done: false })
-    await window.api.lift.start(distance)
+    await window.api.lift.start(distance, direction)
   },
   sendPing: async () => {
     if (get().ping.phase === 'pinging') return

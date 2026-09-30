@@ -1,5 +1,5 @@
 import { connect, MqttClient } from 'mqtt'
-import { MqttConfig, PingReport } from '@shared/types'
+import { CtrlReadback, CtrlSettings, HubSocket, LiftDirection, MqttConfig, PingReport } from '@shared/types'
 import { HubLink } from './hubLink'
 import { Transport, TransportEvents } from './transport'
 
@@ -87,9 +87,24 @@ export class MqttTransport implements Transport {
     return this.link.send(text)
   }
 
-  liftStart(distance: number): Promise<void> {
+  socketSend(protocol: HubSocket, data: string, ack: boolean): Promise<string | undefined> {
     if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
-    return this.link.liftStart(distance)
+    return this.link.socketSend(protocol, data, ack)
+  }
+
+  ctrlGet(): Promise<CtrlReadback> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.ctrlGet()
+  }
+
+  ctrlSet(s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.ctrlSet(s)
+  }
+
+  liftStart(distance: number, direction: LiftDirection): Promise<void> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.liftStart(distance, direction)
   }
 
   liftPing(): Promise<PingReport> {

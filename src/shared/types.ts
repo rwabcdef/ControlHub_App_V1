@@ -25,6 +25,31 @@ export interface LiftStatus {
 /** Lift start distance range, edges (the hub takes 1..6 digits) */
 export const LIFT_DISTANCE_MAX = 999_999
 
+/** Which way a lift start moves - the F / R in LIFT0 BSF234 / BSR234 */
+export type LiftDirection = 'forward' | 'reverse'
+
+/** Speed controller B's settings, from the hub's CTRL0 socket */
+export interface CtrlSettings {
+  /** Integral gain, 0..CTRL_GAIN_MAX in steps of 1e-6 (BI002000 = 0.002) */
+  gainI: number
+  /** Requested speed, RPM (BR0120 = 120) */
+  rpm: number
+}
+
+/** BGA's answer, e.g. 002000.0150.0148 */
+export interface CtrlReadback extends CtrlSettings {
+  /** Measured speed, RPM; the hub clamps it at 9999, so 9999 may be a faulty tacho */
+  measuredRpm: number
+}
+
+/** The hub takes the gain as 6 digits of millionths, and RPM as 4 digits */
+export const CTRL_GAIN_SCALE = 1_000_000
+export const CTRL_GAIN_MAX = 0.999999
+export const CTRL_RPM_MAX = 9999
+
+/** The hub's SerLink sockets the app can send raw data to */
+export type HubSocket = 'CTRL0' | 'LIFT0'
+
 /** A SerLink 'S' PING's outcome - as SerLink's PingResult */
 export type PingResult = 'ok' | 'noSocket' | 'timeout' | 'unexpected' | 'error' | 'closed'
 
@@ -107,10 +132,14 @@ export const IPC = {
   commsSamples: 'comms:samples',
   /** main -> renderer: CommsState */
   commsState: 'comms:state',
+  ctrlGet: 'ctrl:get',
+  ctrlSet: 'ctrl:set',
   liftStart: 'lift:start',
   liftPing: 'lift:ping',
   /** main -> renderer: LiftStatus */
   liftStatus: 'lift:status',
+  /** Raw data to a hub socket (Dev page) */
+  socketSend: 'serlink:socketSend',
   /** main -> renderer: one SerLink trace line (dev / SERLINK_DEBUG only) */
   serlinkTrace: 'serlink:trace',
 

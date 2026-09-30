@@ -1,4 +1,14 @@
-import { LIFT_DISTANCE_MAX, PingReport } from '@shared/types'
+import {
+  CTRL_GAIN_MAX,
+  CTRL_GAIN_SCALE,
+  CTRL_RPM_MAX,
+  CtrlReadback,
+  CtrlSettings,
+  HubSocket,
+  LIFT_DISTANCE_MAX,
+  LiftDirection,
+  PingReport
+} from '@shared/types'
 import { parseCtrlStatus, parseLiftStatus, parseLine } from './parser'
 import { Frame } from './serlink/Frame'
 import { LineWriter, SendFrameResult, SerLink, Socket } from './serlink/SerLink'
@@ -66,17 +76,73 @@ export class HubLink {
     return checkResult(frame ? frame.protocol : CTRL_PROTOCOL, result)
   }
 
+  /** Read controller B's settings: CTRL0T529003BGA -> CTRL0A529016002000.0150.0148 */
+  async ctrlGet(): Promise<CtrlReadback> {
+    const data = await this.sendCtrl('BGA')
+    const m = /^(\d{6})\.(\d{4})\.(\d{4})$/.exec(data ?? '')
+    if (!m) throw new Error(`${CTRL_PROTOCOL}: unexpected BGA reply "${data ?? ''}"`)
+    return { gainI: Number(m[1]) / CTRL_GAIN_SCALE, rpm: Number(m[2]), measuredRpm: Number(m[3]) }
+  }
+
   /**
-   * Start the lift forward for `distance` edges, e.g. LIFT0U645006BSF234.
-   * Sent as 'U', so this only confirms the frame was published; the hub
-   * reports the move's end with an idle status frame.
+   * Set controller B's integral gain and / or requested RPM (BI002000,
+   * BR0120). The gain is read back with BGI, and the result is what the hub
+   * now holds; rejects if the read back gain differs from the one sent.
    */
-  async liftStart(distance: number): Promise<void> {
+  async ctrlSet(s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>> {
+    const out: Partial<CtrlSettings> = {}
+    if (s.gainI !== undefined) {
+      const micro = gainToMicro(s.gainI)
+      await this.sendCtrl(`BI${String(micro).padStart(6, '0')}`)
+      const back = await this.sendCtrl('BGI')
+      if (!/^\d{6}$/.test(back ?? '')) throw new Error(`${CTRL_PROTOCOL}: unexpected BGI reply "${back ?? ''}"`)
+      if (Number(back) !== micro) {
+        throw new Error(`Gain read back as ${Number(back) / CTRL_GAIN_SCALE}, not ${micro / CTRL_GAIN_SCALE}`)
+      }
+      out.gainI = micro / CTRL_GAIN_SCALE
+    }
+    if (s.rpm !== undefined) {
+      if (!Number.isInteger(s.rpm) || s.rpm < 1 || s.rpm > CTRL_RPM_MAX) {
+        throw new Error(`RPM must be a whole number from 1 to ${CTRL_RPM_MAX}`)
+      }
+      await this.sendCtrl(`BR${String(s.rpm).padStart(4, '0')}`)
+      out.rpm = s.rpm
+    }
+    return out
+  }
+
+  /**
+   * Start the lift for `distance` edges in `direction`, e.g.
+   * LIFT0U645006BSF234 (forward) or LIFT0U645006BSR234 (reverse). Sent as
+   * 'U', so this only confirms the frame was published; the hub reports the
+   * move's end with an idle status frame. The speed is the controller's
+   * (CTRL0 BR), not part of the start.
+   */
+  async liftStart(distance: number, direction: LiftDirection): Promise<void> {
     if (!this.lift) throw new Error(`${LIFT_PROTOCOL} is only available over MQTT`)
     if (!Number.isInteger(distance) || distance < 1 || distance > LIFT_DISTANCE_MAX) {
       throw new Error(`Lift distance must be a whole number from 1 to ${LIFT_DISTANCE_MAX}`)
     }
-    checkResult(LIFT_PROTOCOL, await this.lift.sendData(`${LIFT_ID}SF${distance}`, false))
+    // Checked here too, not just typed: it arrives from the renderer over IPC.
+    if (direction !== 'forward' && direction !== 'reverse') {
+      throw new Error(`Lift direction must be forward or reverse, not "${String(direction)}"`)
+    }
+    const dir = direction === 'forward' ? 'F' : 'R'
+    checkResult(LIFT_PROTOCOL, await this.lift.sendData(`${LIFT_ID}S${dir}${distance}`, false))
+  }
+
+  /**
+   * Send raw data to a socket (e.g. CTRL0 BGA, LIFT0 BSF234) as a 'T' frame
+   * (ack = true: rejects unless acked OK, resolves with any data on the ack)
+   * or a 'U' frame.
+   */
+  async socketSend(protocol: HubSocket, data: string, ack: boolean): Promise<string | undefined> {
+    const socket = protocol === CTRL_PROTOCOL ? this.ctrl : protocol === LIFT_PROTOCOL ? this.lift : undefined
+    if (socket === undefined) throw new Error(`Unknown socket ${protocol}`)
+    if (!socket) throw new Error(`${protocol} is only available over MQTT`)
+    const payload = data.trim()
+    if (!payload) throw new Error('Empty payload')
+    return checkResult(protocol, await socket.sendData(payload, ack))
   }
 
   /** SerLink PING the hub's LIFT0 socket (LIFT0S...PING). Never rejects once sent. */
@@ -89,6 +155,21 @@ export class HubLink {
   close(): void {
     this.serLink.close()
   }
+
+  /** Send CTRL0 data in a 'T' frame; resolves with any data on the ack. */
+  private async sendCtrl(data: string): Promise<string | undefined> {
+    return checkResult(CTRL_PROTOCOL, await this.ctrl.sendData(data, true))
+  }
+}
+
+/** Gain as the hub's integer millionths; throws unless 0..CTRL_GAIN_MAX with at most 6 decimals. */
+function gainToMicro(gain: number): number {
+  const micro = Math.round(gain * CTRL_GAIN_SCALE)
+  if (!Number.isFinite(gain) || micro < 0 || micro > CTRL_GAIN_MAX * CTRL_GAIN_SCALE
+    || Math.abs(gain * CTRL_GAIN_SCALE - micro) > 1e-6) {
+    throw new Error(`Gain must be 0 to ${CTRL_GAIN_MAX}, with at most 6 decimal places`)
+  }
+  return micro
 }
 
 function checkResult(protocol: string, r: SendFrameResult): string | undefined {

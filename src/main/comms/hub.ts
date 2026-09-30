@@ -1,5 +1,7 @@
 import { app, ipcMain, WebContents } from 'electron'
-import { CommsConfig, CommsState, IPC, MotorSample, PingReport } from '@shared/types'
+import {
+  CommsConfig, CommsState, CtrlReadback, CtrlSettings, HubSocket, IPC, LiftDirection, MotorSample, PingReport
+} from '@shared/types'
 import { getSettings, updateSettings } from '../settings'
 import { MqttTransport } from './mqtt'
 import { listSerialPorts, SerialTransport } from './serial'
@@ -106,10 +108,28 @@ class CommsHub {
     return this.transport.send(text)
   }
 
-  async liftStart(distance: number): Promise<void> {
+  async socketSend(protocol: HubSocket, data: string, ack: boolean): Promise<string | undefined> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.socketSend) throw new Error('Socket commands need a serial or MQTT connection')
+    return this.transport.socketSend(protocol, data, ack)
+  }
+
+  async ctrlGet(): Promise<CtrlReadback> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.ctrlGet) throw new Error('Controller settings need a serial or MQTT connection')
+    return this.transport.ctrlGet()
+  }
+
+  async ctrlSet(s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.ctrlSet) throw new Error('Controller settings need a serial or MQTT connection')
+    return this.transport.ctrlSet(s)
+  }
+
+  async liftStart(distance: number, direction: LiftDirection): Promise<void> {
     if (!this.transport) throw new Error('Not connected')
     if (!this.transport.liftStart) throw new Error('Lift control needs an MQTT connection')
-    await this.transport.liftStart(distance)
+    await this.transport.liftStart(distance, direction)
   }
 
   async liftPing(): Promise<PingReport> {
@@ -141,6 +161,19 @@ export function registerCommsIpc(): void {
   ipcMain.handle(IPC.commsConnect, (_e, cfg?: CommsConfig) => commsHub.connect(cfg ?? getSettings().comms))
   ipcMain.handle(IPC.commsDisconnect, () => commsHub.disconnect())
   ipcMain.handle(IPC.commsSend, (_e, text: string) => commsHub.send(String(text)))
-  ipcMain.handle(IPC.liftStart, (_e, distance: number) => commsHub.liftStart(Number(distance)))
+  ipcMain.handle(IPC.socketSend, (_e, protocol: HubSocket, data: string, ack: boolean) =>
+    commsHub.socketSend(protocol, String(data), !!ack)
+  )
+  ipcMain.handle(IPC.ctrlGet, () => commsHub.ctrlGet())
+  ipcMain.handle(IPC.ctrlSet, (_e, s: Partial<CtrlSettings>) =>
+    commsHub.ctrlSet({
+      gainI: s?.gainI === undefined ? undefined : Number(s.gainI),
+      rpm: s?.rpm === undefined ? undefined : Number(s.rpm)
+    })
+  )
+  // direction is validated in HubLink.liftStart() - it is untrusted input from the renderer
+  ipcMain.handle(IPC.liftStart, (_e, distance: number, direction: LiftDirection) =>
+    commsHub.liftStart(Number(distance), direction)
+  )
   ipcMain.handle(IPC.liftPing, () => commsHub.liftPing())
 }

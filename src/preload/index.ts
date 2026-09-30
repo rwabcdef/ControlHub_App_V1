@@ -2,7 +2,11 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import type {
   CommsConfig,
   CommsState,
+  CtrlReadback,
+  CtrlSettings,
   DirEntry,
+  HubSocket,
+  LiftDirection,
   LiftStatus,
   MotorSample,
   PingReport,
@@ -34,12 +38,23 @@ const api = {
     onSamples: (cb: (batch: MotorSample[]) => void) => on(IPC.commsSamples, cb),
     onState: (cb: (state: CommsState) => void) => on(IPC.commsState, cb),
     /** SerLink trace lines (dev / SERLINK_DEBUG only) */
-    onTrace: (cb: (line: string) => void) => on(IPC.serlinkTrace, cb)
+    onTrace: (cb: (line: string) => void) => on(IPC.serlinkTrace, cb),
+    /** Send raw data to a hub socket (e.g. CTRL0 BGA, LIFT0 BSF234) as a 'T' (ack) or 'U' frame; resolves with any ack data */
+    socketSend: (protocol: HubSocket, data: string, ack: boolean): Promise<string | undefined> =>
+      ipcRenderer.invoke(IPC.socketSend, protocol, data, ack)
+  },
+
+  ctrl: {
+    /** Read speed controller B's gain, requested and measured RPM (BGA) */
+    get: (): Promise<CtrlReadback> => ipcRenderer.invoke(IPC.ctrlGet),
+    /** Set the gain and / or RPM; resolves with what the hub now holds */
+    set: (s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>> => ipcRenderer.invoke(IPC.ctrlSet, s)
   },
 
   lift: {
-    /** Start the lift forward for `distance` edges (MQTT only) */
-    start: (distance: number): Promise<void> => ipcRenderer.invoke(IPC.liftStart, distance),
+    /** Start the lift for `distance` edges in `direction` (MQTT only) */
+    start: (distance: number, direction: LiftDirection): Promise<void> =>
+      ipcRenderer.invoke(IPC.liftStart, distance, direction),
     /** SerLink PING the hub's LIFT0 socket (MQTT only) */
     ping: (): Promise<PingReport> => ipcRenderer.invoke(IPC.liftPing),
     onStatus: (cb: (status: LiftStatus) => void) => on(IPC.liftStatus, cb)

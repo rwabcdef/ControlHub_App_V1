@@ -1,4 +1,4 @@
-import { LiftStatus, MotorSample, PingReport } from '@shared/types'
+import { CtrlReadback, CtrlSettings, HubSocket, LiftDirection, LiftStatus, MotorSample, PingReport } from '@shared/types'
 
 /** A sample as decoded from the wire; `t` is optional (host time is used if absent). */
 export type RawSample = Omit<MotorSample, 't'> & { t?: number }
@@ -23,8 +23,13 @@ export interface Transport {
   close(): Promise<void>
   /** Send one text command line to the device; resolves with any reply data (e.g. from a SerLink ack) */
   send(text: string): Promise<string | undefined>
-  /** Start the lift forward for `distance` edges; only on links that carry the LIFT0 socket */
-  liftStart?(distance: number): Promise<void>
+  /** Send raw data to a hub socket as a 'T' (ack) or 'U' frame; resolves with any ack data */
+  socketSend?(protocol: HubSocket, data: string, ack: boolean): Promise<string | undefined>
+  /** Read / set the hub's speed controller B over CTRL0; only on links to the hub */
+  ctrlGet?(): Promise<CtrlReadback>
+  ctrlSet?(s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>>
+  /** Start the lift for `distance` edges in `direction`; only on links that carry the LIFT0 socket */
+  liftStart?(distance: number, direction: LiftDirection): Promise<void>
   /** SerLink PING the LIFT0 socket; only on links that carry it */
   liftPing?(): Promise<PingReport>
 }
