@@ -43,10 +43,12 @@ export function parseCtrlStatus(data: string): RawSample | null {
 
 /**
  * Data of the hub's LIFT0 status / done frame, e.g. BI000234.000234 from
- * LIFT0U001015BI000234.000234: <lift><M|I><travelled:6>.<target:6>.
+ * LIFT0U001015BI000234.000234: <lift><M|I|G><travelled:6>.<target:6>.
+ * M: moving; I: idle; G: a Down move ended by the ground sensor (PB9), e.g.
+ * BG000024.000030 - done after 24 of the 30 edges allowed.
  */
 export function parseLiftStatus(data: string): LiftStatus | null {
-  const m = /^([A-Z])([MI])(\d{6})\.(\d{6})$/.exec(data)
+  const m = /^([A-Z])([MIG])(\d{6})\.(\d{6})$/.exec(data)
   if (!m) return null
   return { lift: m[1], moving: m[2] === 'M', travelled: Number(m[3]), target: Number(m[4]) }
 }

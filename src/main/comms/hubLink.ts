@@ -132,6 +132,25 @@ export class HubLink {
   }
 
   /**
+   * Lower the lift until its ground sensor (PB9) trips, giving up after
+   * `maxEdges`: LIFT0U645006BG2000. Sent as 'U'; like a start, the hub
+   * reports the move's end with an idle status frame.
+   */
+  async liftDown(maxEdges: number): Promise<void> {
+    if (!this.lift) throw new Error(`${LIFT_PROTOCOL} is only available over MQTT`)
+    if (!Number.isInteger(maxEdges) || maxEdges < 1 || maxEdges > LIFT_DISTANCE_MAX) {
+      throw new Error(`Lift max edges must be a whole number from 1 to ${LIFT_DISTANCE_MAX}`)
+    }
+    checkResult(LIFT_PROTOCOL, await this.lift.sendData(`${LIFT_ID}G${maxEdges}`, false))
+  }
+
+  /** Stop the lift: LIFT0U645002BX, sent as 'U'. */
+  async liftStop(): Promise<void> {
+    if (!this.lift) throw new Error(`${LIFT_PROTOCOL} is only available over MQTT`)
+    checkResult(LIFT_PROTOCOL, await this.lift.sendData(`${LIFT_ID}X`, false))
+  }
+
+  /**
    * Send raw data to a socket (e.g. CTRL0 BGA, LIFT0 BSF234) as a 'T' frame
    * (ack = true: rejects unless acked OK, resolves with any data on the ack)
    * or a 'U' frame.

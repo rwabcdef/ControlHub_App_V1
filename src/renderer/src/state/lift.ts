@@ -12,6 +12,9 @@ interface LiftStore {
   done: boolean
   ping: LiftPingState
   start: (distance: number, direction: LiftDirection) => Promise<void>
+  /** Lower the lift to its ground sensor, `maxEdges` at most */
+  down: (maxEdges: number) => Promise<void>
+  stop: () => Promise<void>
   /** SerLink PING the hub's LIFT0 socket; ignored while one is in progress */
   sendPing: () => Promise<void>
 }
@@ -24,6 +27,11 @@ export const useLift = create<LiftStore>((set, get) => ({
     set({ done: false })
     await window.api.lift.start(distance, direction)
   },
+  down: async (maxEdges) => {
+    set({ done: false })
+    await window.api.lift.down(maxEdges)
+  },
+  stop: () => window.api.lift.stop(),
   sendPing: async () => {
     if (get().ping.phase === 'pinging') return
     set({ ping: { phase: 'pinging' } })

@@ -135,6 +135,8 @@ export const IPC = {
   ctrlGet: 'ctrl:get',
   ctrlSet: 'ctrl:set',
   liftStart: 'lift:start',
+  liftDown: 'lift:down',
+  liftStop: 'lift:stop',
   liftPing: 'lift:ping',
   /** main -> renderer: LiftStatus */
   liftStatus: 'lift:status',

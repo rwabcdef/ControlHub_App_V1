@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react'
 import {
   Alert, Box, Button, Divider, MenuItem, Stack, TextField, Tooltip, Typography, type SxProps, type Theme
 } from '@mui/material'
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import SaveIcon from '@mui/icons-material/Save'
+import StopIcon from '@mui/icons-material/Stop'
 import {
   CTRL_GAIN_MAX, CTRL_GAIN_SCALE, CTRL_RPM_MAX, LIFT_DISTANCE_MAX, type LiftDirection
 } from '@shared/types'
@@ -20,54 +23,104 @@ function parseDistance(text: string): number | null {
   return n >= 1 && n <= LIFT_DISTANCE_MAX ? n : null
 }
 
+/** Down's max edges: the distance box plus 20% headroom, capped at LIFT_DISTANCE_MAX. */
+const downMaxEdges = (distance: number): number => Math.min(Math.ceil(distance * 1.2), LIFT_DISTANCE_MAX)
+
+/** Control section layouts */
+type MoveMode = 'upDown' | 'forRev'
+
+const MOVE_MODES: { value: MoveMode; label: string }[] = [
+  { value: 'upDown', label: 'Up/Down' },
+  { value: 'forRev', label: 'For/Rev' }
+]
+
 /**
- * Dashboard's Control panel: starts the hub's lift (LIFT0 socket, over MQTT)
- * for the distance and direction chosen, and shows Done once the hub reports
- * it idle.
+ * Dashboard's Control panel: moves the hub's lift (LIFT0 socket, over MQTT)
+ * and shows Done once the hub reports it idle. Up/Down: Up starts it
+ * forward for the distance, Down lowers it to the ground sensor (distance
+ * + 20% at most). For/Rev: starts it for the distance and direction chosen.
  */
 export function DashboardControl({ sx }: { sx?: SxProps<Theme> }): React.JSX.Element {
   const connected = useComms((s) => s.state.status === 'connected')
-  const { status, done, start } = useLift()
+  const { status, done, start, down, stop } = useLift()
+  const [moveMode, setMoveMode] = useState<MoveMode>('upDown')
   const [distance, setDistance] = useState('')
   // Kept between starts, so repeating a move is just Start again.
   const [direction, setDirection] = useState<LiftDirection>('forward')
-  const [busy, setBusy] = useState(false)
+  // Which move button is waiting on its send
+  const [busy, setBusy] = useState<'up' | 'down' | 'start' | 'stop' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const value = parseDistance(distance)
   const invalid = distance.trim() !== '' && value === null
-  // Why Start is disabled, if it is
+  // Why the move buttons are disabled, if they are
   const blocked = !connected ? 'Connect first' : value === null ? 'Enter a distance (edges)' : ''
 
-  const onStart = (): void => {
-    if (blocked || value === null) return
+  const run = (which: NonNullable<typeof busy>, send: () => Promise<void>): void => {
     setError(null)
-    setBusy(true)
-    start(value, direction)
+    setBusy(which)
+    send()
       .catch((e) => setError(errorMessage(e)))
-      .finally(() => setBusy(false))
+      .finally(() => setBusy(null))
   }
+  const onMove = (which: 'up' | 'down' | 'start'): void => {
+    if (blocked || value === null || busy) return
+    run(which, () => which === 'up' ? start(value, 'forward')
+      : which === 'down' ? down(downMaxEdges(value))
+        : start(value, direction))
+  }
+  const onStop = (): void => {
+    if (connected) run('stop', stop)
+  }
+
+  const moveButton = (which: 'up' | 'down' | 'start', label: string, icon: React.ReactNode): React.JSX.Element => (
+    <Tooltip title={blocked}>
+      {/* span: a disabled button fires no events, so the tooltip needs a wrapper */}
+      <span style={{ display: 'flex', flex: 1 }}>
+        <Button fullWidth variant="contained" startIcon={icon} loading={busy === which}
+          disabled={!!blocked || (busy !== null && busy !== which)} onClick={() => onMove(which)}>
+          {label}
+        </Button>
+      </span>
+    </Tooltip>
+  )
 
   return (
     <Panel title="Control" sx={sx}>
       <Stack spacing={1.5}>
-        <TextField label="Distance" size="small" type="number" value={distance}
-          onChange={(e) => setDistance(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && onStart()}
-          error={invalid} helperText={invalid ? `1 to ${LIFT_DISTANCE_MAX}` : 'edges'}
-          slotProps={{ htmlInput: { min: 1, max: LIFT_DISTANCE_MAX, step: 1 } }} />
-
-        <TextField select label="Direction" size="small" value={direction}
-          onChange={(e) => setDirection(e.target.value as LiftDirection)}>
-          {DIRECTIONS.map((d) => <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
+        <TextField select label="Mode" size="small" value={moveMode}
+          onChange={(e) => setMoveMode(e.target.value as MoveMode)}>
+          {MOVE_MODES.map((m) => <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>)}
         </TextField>
 
-        <Tooltip title={blocked}>
-          {/* span: a disabled button fires no events, so the tooltip needs a wrapper */}
+        <TextField label="Distance" size="small" type="number" value={distance}
+          onChange={(e) => setDistance(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && moveMode === 'forRev' && onMove('start')}
+          error={invalid}
+          helperText={invalid ? `1 to ${LIFT_DISTANCE_MAX}`
+            : moveMode === 'upDown' && value !== null ? `edges (Down: ${downMaxEdges(value)} max)` : 'edges'}
+          slotProps={{ htmlInput: { min: 1, max: LIFT_DISTANCE_MAX, step: 1 } }} />
+
+        {moveMode === 'upDown' ? (
+          <Stack direction="row" spacing={1}>
+            {moveButton('up', 'Up', <ArrowUpwardIcon />)}
+            {moveButton('down', 'Down', <ArrowDownwardIcon />)}
+          </Stack>
+        ) : (
+          <>
+            <TextField select label="Direction" size="small" value={direction}
+              onChange={(e) => setDirection(e.target.value as LiftDirection)}>
+              {DIRECTIONS.map((d) => <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
+            </TextField>
+            {moveButton('start', 'Start', <PlayArrowIcon />)}
+          </>
+        )}
+
+        <Tooltip title={connected ? '' : 'Connect first'}>
           <span style={{ display: 'flex' }}>
-            <Button fullWidth variant="contained" startIcon={<PlayArrowIcon />} loading={busy}
-              disabled={!!blocked} onClick={onStart}>
-              Start
+            <Button fullWidth variant="contained" color="error" startIcon={<StopIcon />}
+              loading={busy === 'stop'} disabled={!connected} onClick={onStop}>
+              Stop
             </Button>
           </span>
         </Tooltip>
@@ -79,10 +132,12 @@ export function DashboardControl({ sx }: { sx?: SxProps<Theme> }): React.JSX.Ele
           </Typography>
         )}
 
-        {/* Not wired up yet */}
-        <Button variant="outlined" disabled>
-          Reset
-        </Button>
+        {moveMode === 'forRev' && (
+          // Not wired up yet
+          <Button variant="outlined" disabled>
+            Reset
+          </Button>
+        )}
 
         {error && <Alert severity="error" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
 

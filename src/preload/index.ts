@@ -55,6 +55,10 @@ const api = {
     /** Start the lift for `distance` edges in `direction` (MQTT only) */
     start: (distance: number, direction: LiftDirection): Promise<void> =>
       ipcRenderer.invoke(IPC.liftStart, distance, direction),
+    /** Lower the lift to the ground sensor, `maxEdges` at most (MQTT only) */
+    down: (maxEdges: number): Promise<void> => ipcRenderer.invoke(IPC.liftDown, maxEdges),
+    /** Stop the lift (MQTT only) */
+    stop: (): Promise<void> => ipcRenderer.invoke(IPC.liftStop),
     /** SerLink PING the hub's LIFT0 socket (MQTT only) */
     ping: (): Promise<PingReport> => ipcRenderer.invoke(IPC.liftPing),
     onStatus: (cb: (status: LiftStatus) => void) => on(IPC.liftStatus, cb)

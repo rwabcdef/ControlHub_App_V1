@@ -107,6 +107,16 @@ export class MqttTransport implements Transport {
     return this.link.liftStart(distance, direction)
   }
 
+  liftDown(maxEdges: number): Promise<void> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.liftDown(maxEdges)
+  }
+
+  liftStop(): Promise<void> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.liftStop()
+  }
+
   liftPing(): Promise<PingReport> {
     if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
     return this.link.liftPing()

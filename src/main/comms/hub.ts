@@ -132,6 +132,18 @@ class CommsHub {
     await this.transport.liftStart(distance, direction)
   }
 
+  async liftDown(maxEdges: number): Promise<void> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.liftDown) throw new Error('Lift control needs an MQTT connection')
+    await this.transport.liftDown(maxEdges)
+  }
+
+  async liftStop(): Promise<void> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.liftStop) throw new Error('Lift control needs an MQTT connection')
+    await this.transport.liftStop()
+  }
+
   async liftPing(): Promise<PingReport> {
     if (!this.transport) throw new Error('Not connected')
     if (!this.transport.liftPing) throw new Error('Lift ping needs an MQTT connection')
@@ -175,5 +187,7 @@ export function registerCommsIpc(): void {
   ipcMain.handle(IPC.liftStart, (_e, distance: number, direction: LiftDirection) =>
     commsHub.liftStart(Number(distance), direction)
   )
+  ipcMain.handle(IPC.liftDown, (_e, maxEdges: number) => commsHub.liftDown(Number(maxEdges)))
+  ipcMain.handle(IPC.liftStop, () => commsHub.liftStop())
   ipcMain.handle(IPC.liftPing, () => commsHub.liftPing())
 }

@@ -30,6 +30,10 @@ export interface Transport {
   ctrlSet?(s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>>
   /** Start the lift for `distance` edges in `direction`; only on links that carry the LIFT0 socket */
   liftStart?(distance: number, direction: LiftDirection): Promise<void>
+  /** Lower the lift to its ground sensor, `maxEdges` at most; only on links that carry the LIFT0 socket */
+  liftDown?(maxEdges: number): Promise<void>
+  /** Stop the lift; only on links that carry the LIFT0 socket */
+  liftStop?(): Promise<void>
   /** SerLink PING the LIFT0 socket; only on links that carry it */
   liftPing?(): Promise<PingReport>
 }
