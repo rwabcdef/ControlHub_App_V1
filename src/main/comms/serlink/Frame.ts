@@ -8,6 +8,10 @@
  * which case there is no data, e.g. LED01A492900. An ack can also piggyback
  * data instead, e.g. CTRL0A5290040120.
  *
+ * 'S' is a system request, to the SerLink layer rather than the socket's
+ * owner, e.g. LIFT0S045004PING. It is always answered with an ordinary 'A'
+ * (LIFT0A045008PINGBACK), never with another 'S' - see SerLink.ts.
+ *
  * Lines are '\n' terminated on the wire; toString() / fromString() work on the
  * line without its terminator (the link adds / strips it).
  */
@@ -16,6 +20,8 @@ export class Frame {
   static readonly TYPE_UNIDIRECTION = 'U'
   static readonly TYPE_ACK = 'A'
   static readonly TYPE_RELAY_ACK = 'B'
+  /** System request, answered with an 'A' - as the firmware's Frame::TYPE_SYSTEM */
+  static readonly TYPE_SYSTEM = 'S'
 
   static readonly LEN_PROTOCOL = 5
   static readonly LEN_TYPE = 1
@@ -35,7 +41,8 @@ export class Frame {
     Frame.TYPE_TRANSMISSION,
     Frame.TYPE_UNIDIRECTION,
     Frame.TYPE_ACK,
-    Frame.TYPE_RELAY_ACK
+    Frame.TYPE_RELAY_ACK,
+    Frame.TYPE_SYSTEM
   ])
 
   constructor(

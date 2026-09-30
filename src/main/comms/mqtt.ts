@@ -1,5 +1,5 @@
 import { connect, MqttClient } from 'mqtt'
-import { MqttConfig } from '@shared/types'
+import { MqttConfig, PingReport } from '@shared/types'
 import { HubLink } from './hubLink'
 import { Transport, TransportEvents } from './transport'
 
@@ -90,5 +90,10 @@ export class MqttTransport implements Transport {
   liftStart(distance: number): Promise<void> {
     if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
     return this.link.liftStart(distance)
+  }
+
+  liftPing(): Promise<PingReport> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.liftPing()
   }
 }

@@ -1,4 +1,4 @@
-import { LiftStatus, MotorSample } from '@shared/types'
+import { LiftStatus, MotorSample, PingReport } from '@shared/types'
 
 /** A sample as decoded from the wire; `t` is optional (host time is used if absent). */
 export type RawSample = Omit<MotorSample, 't'> & { t?: number }
@@ -25,4 +25,6 @@ export interface Transport {
   send(text: string): Promise<string | undefined>
   /** Start the lift forward for `distance` edges; only on links that carry the LIFT0 socket */
   liftStart?(distance: number): Promise<void>
+  /** SerLink PING the LIFT0 socket; only on links that carry it */
+  liftPing?(): Promise<PingReport>
 }

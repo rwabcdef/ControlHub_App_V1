@@ -5,6 +5,7 @@ import type {
   DirEntry,
   LiftStatus,
   MotorSample,
+  PingReport,
   SerialPortInfo
 } from '../shared/types'
 import { IPC } from '../shared/types'
@@ -39,6 +40,8 @@ const api = {
   lift: {
     /** Start the lift forward for `distance` edges (MQTT only) */
     start: (distance: number): Promise<void> => ipcRenderer.invoke(IPC.liftStart, distance),
+    /** SerLink PING the hub's LIFT0 socket (MQTT only) */
+    ping: (): Promise<PingReport> => ipcRenderer.invoke(IPC.liftPing),
     onStatus: (cb: (status: LiftStatus) => void) => on(IPC.liftStatus, cb)
   },
 

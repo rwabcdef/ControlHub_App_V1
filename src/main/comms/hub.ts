@@ -1,5 +1,5 @@
 import { app, ipcMain, WebContents } from 'electron'
-import { CommsConfig, CommsState, IPC, MotorSample } from '@shared/types'
+import { CommsConfig, CommsState, IPC, MotorSample, PingReport } from '@shared/types'
 import { getSettings, updateSettings } from '../settings'
 import { MqttTransport } from './mqtt'
 import { listSerialPorts, SerialTransport } from './serial'
@@ -112,6 +112,12 @@ class CommsHub {
     await this.transport.liftStart(distance)
   }
 
+  async liftPing(): Promise<PingReport> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.liftPing) throw new Error('Lift ping needs an MQTT connection')
+    return this.transport.liftPing()
+  }
+
   private flush(): void {
     if (this.pending.length === 0) return
     const batch = this.pending
@@ -136,4 +142,5 @@ export function registerCommsIpc(): void {
   ipcMain.handle(IPC.commsDisconnect, () => commsHub.disconnect())
   ipcMain.handle(IPC.commsSend, (_e, text: string) => commsHub.send(String(text)))
   ipcMain.handle(IPC.liftStart, (_e, distance: number) => commsHub.liftStart(Number(distance)))
+  ipcMain.handle(IPC.liftPing, () => commsHub.liftPing())
 }

@@ -11,10 +11,26 @@ import { Frame } from './Frame'
  *
  *   'T' received -> 'A' (ACK_OK) sent straight back, then delivered to the socket
  *   'U' received -> delivered to the socket
- *   'A' / 'B' received -> matched against the 'T' frame being waited on
+ *   'S' received -> answered with an 'A' straight back, never delivered
+ *   'A' / 'B' received -> matched against the 'T' or 'S' frame being waited on
  *
- * As with the firmware Writer, frames are sent one at a time: a 'T' frame is
- * not followed by the next send until it has been acked or has timed out.
+ * As with the firmware Writer, frames are sent one at a time: a 'T' or 'S'
+ * frame is not followed by the next send until it has been acked or has timed
+ * out.
+ *
+ * System frames ('S')
+ * -------------------
+ * Requests to the SerLink layer itself, as in the firmware (Socket.hpp,
+ * Instant handling). The only command is PING:
+ *
+ *   LIFT0S045004PING -> LIFT0A045008PINGBACK   a socket for LIFT0 exists
+ *   XXXXXS045004PING -> XXXXXA045900           link up, no such socket
+ *   (nothing)                                  link down, or the far end
+ *                                              predates 'S'
+ *
+ * Socket.ping() sends one; receiveLine() answers the board's. The answer is
+ * always an 'A', so two nodes that both handle 'S' cannot ping-pong, and an
+ * 'S' frame is never delivered to the socket's onReceive.
  */
 
 /** Writes one line; the terminator is added by the link. */
@@ -44,6 +60,33 @@ export interface SendFrameResult {
   ack?: Frame
   /** Data piggybacked on the ack, e.g. '0120' from CTRL0A5290040120 */
   ackData?: string
+  error?: Error
+}
+
+/** System commands and answers - as the firmware's Socket::SYS_PING / SYS_PINGBACK */
+export const SYS_PING = 'PING'
+export const SYS_PINGBACK = 'PINGBACK'
+
+export type PingResult =
+  /** PINGBACK: link up, and the far end has a socket for this protocol */
+  | 'ok'
+  /** Plain ACK_OK: link up, but no socket for this protocol at the far end */
+  | 'noSocket'
+  /** No answer: link down, far end not running, or it predates 'S' frames */
+  | 'timeout'
+  /** Answered, but with neither of the above (see `ack`) */
+  | 'unexpected'
+  /** The link failed to write the frame (see `error`) */
+  | 'error'
+  /** SerLink was closed before the ping was sent or answered */
+  | 'closed'
+
+export interface PingOutcome {
+  result: PingResult
+  /** Milliseconds from handing the ping to the Writer to its answer; includes
+   *  time queued behind earlier sends, so it is not a pure round trip. */
+  elapsedMs: number
+  ack?: Frame
   error?: Error
 }
 
@@ -87,6 +130,33 @@ export class Socket {
     const frame = new Frame(this.protocol, type, this.rollCode, data.length, data)
     this.rollCode = Frame.nextRollCode(this.rollCode)
     return this.link.sendFrame(frame, opts)
+  }
+
+  /**
+   * Ping this socket's protocol at the far end with an 'S' PING frame. Never
+   * rejects - the outcome is in `result`. Queued behind any send in progress,
+   * like every other frame, so a busy or dead link delays it; allow for that
+   * before treating a slow ping as a failure.
+   */
+  async ping(opts: Pick<SendOptions, 'ackTimeoutMs'> = {}): Promise<PingOutcome> {
+    const frame = new Frame(this.protocol, Frame.TYPE_SYSTEM, this.rollCode, SYS_PING.length, SYS_PING)
+    this.rollCode = Frame.nextRollCode(this.rollCode)
+
+    const start = Date.now()
+    const sent = await this.link.sendFrame(frame, { ackTimeoutMs: opts.ackTimeoutMs })
+    const elapsedMs = Date.now() - start
+
+    switch (sent.status) {
+      case 'timeout':
+      case 'error':
+      case 'closed':
+        return { result: sent.status, elapsedMs, error: sent.error }
+    }
+
+    const ack = sent.ack
+    if (ack && !ack.isStatus() && ack.data === SYS_PINGBACK) return { result: 'ok', elapsedMs, ack }
+    if (ack && ack.dataLen === Frame.ACK_OK) return { result: 'noSocket', elapsedMs, ack }
+    return { result: 'unexpected', elapsedMs, ack }
   }
 
   setOnReceive(handler: FrameHandler | null): void {
@@ -147,10 +217,12 @@ class Writer {
     } catch (err) {
       return { status: 'error', error: err as Error }
     }
-    if (frame.type !== Frame.TYPE_TRANSMISSION) return { status: 'ok' }
+    // 'T' and 'S' are both answered with an 'A'; nothing else is.
+    if (frame.type !== Frame.TYPE_TRANSMISSION && frame.type !== Frame.TYPE_SYSTEM) return { status: 'ok' }
 
     let ack = await this.waitAck(frame, Frame.TYPE_ACK, opts.ackTimeoutMs ?? ACK_TIMEOUT_MS)
-    if (ack && opts.relayAck && ack.dataLen === Frame.ACK_OK) {
+    // Never for 'S': it is answered by the node it reaches, not relayed on.
+    if (ack && opts.relayAck && frame.type === Frame.TYPE_TRANSMISSION && ack.dataLen === Frame.ACK_OK) {
       const relayAck = await this.waitAck(frame, Frame.TYPE_RELAY_ACK, opts.relayAckTimeoutMs ?? RELAY_ACK_TIMEOUT_MS)
       if (!relayAck) return this.closed ? { status: 'closed' } : { status: 'timeout', ack }
       ack = relayAck
@@ -237,6 +309,19 @@ export class SerLink {
       case Frame.TYPE_UNIDIRECTION:
         this.deliver(frame)
         break
+      case Frame.TYPE_SYSTEM: {
+        // Answered here, as the firmware's Socket::onInstant() does, and never
+        // delivered - it carries nothing for the socket's owner. PINGBACK only
+        // if we have a socket for the protocol; otherwise, and for any command
+        // we don't know, a plain ACK_OK.
+        const pingback = frame.data === SYS_PING && this.sockets.has(frame.protocol)
+        const answer = pingback
+          ? new Frame(frame.protocol, Frame.TYPE_ACK, frame.rollCode, SYS_PINGBACK.length, SYS_PINGBACK)
+          : new Frame(frame.protocol, Frame.TYPE_ACK, frame.rollCode, Frame.ACK_OK)
+        this.debug(`tx ${answer}`)
+        this.write(answer.toString()).catch((err) => this.debug(`ack write failed: ${(err as Error).message}`))
+        break
+      }
       case Frame.TYPE_ACK:
       case Frame.TYPE_RELAY_ACK:
         // e.g. the 'A' that precedes a relay's 'B', when relayAck wasn't asked for

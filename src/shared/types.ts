@@ -25,6 +25,17 @@ export interface LiftStatus {
 /** Lift start distance range, edges (the hub takes 1..6 digits) */
 export const LIFT_DISTANCE_MAX = 999_999
 
+/** A SerLink 'S' PING's outcome - as SerLink's PingResult */
+export type PingResult = 'ok' | 'noSocket' | 'timeout' | 'unexpected' | 'error' | 'closed'
+
+export interface PingReport {
+  result: PingResult
+  /** Milliseconds from queuing the ping to its answer (or timeout) */
+  elapsedMs: number
+  /** Set for 'error' */
+  error?: string
+}
+
 export type MotorField = Exclude<keyof MotorSample, 't'>
 
 export type CommsKind = 'sim' | 'serial' | 'mqtt'
@@ -97,6 +108,7 @@ export const IPC = {
   /** main -> renderer: CommsState */
   commsState: 'comms:state',
   liftStart: 'lift:start',
+  liftPing: 'lift:ping',
   /** main -> renderer: LiftStatus */
   liftStatus: 'lift:status',
   /** main -> renderer: one SerLink trace line (dev / SERLINK_DEBUG only) */

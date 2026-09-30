@@ -1,4 +1,4 @@
-import { LIFT_DISTANCE_MAX } from '@shared/types'
+import { LIFT_DISTANCE_MAX, PingReport } from '@shared/types'
 import { parseCtrlStatus, parseLiftStatus, parseLine } from './parser'
 import { Frame } from './serlink/Frame'
 import { LineWriter, SendFrameResult, SerLink, Socket } from './serlink/SerLink'
@@ -77,6 +77,13 @@ export class HubLink {
       throw new Error(`Lift distance must be a whole number from 1 to ${LIFT_DISTANCE_MAX}`)
     }
     checkResult(LIFT_PROTOCOL, await this.lift.sendData(`${LIFT_ID}SF${distance}`, false))
+  }
+
+  /** SerLink PING the hub's LIFT0 socket (LIFT0S...PING). Never rejects once sent. */
+  async liftPing(): Promise<PingReport> {
+    if (!this.lift) throw new Error(`${LIFT_PROTOCOL} is only available over MQTT`)
+    const { result, elapsedMs, error } = await this.lift.ping()
+    return { result, elapsedMs, error: error?.message }
   }
 
   close(): void {
