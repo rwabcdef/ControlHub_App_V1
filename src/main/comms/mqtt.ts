@@ -1,5 +1,5 @@
 import { connect, MqttClient } from 'mqtt'
-import { CtrlReadback, CtrlSettings, HubSocket, LiftDirection, MqttConfig, PingReport } from '@shared/types'
+import { CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, LiftDirection, MqttConfig, PingReport } from '@shared/types'
 import { HubLink } from './hubLink'
 import { Transport, TransportEvents } from './transport'
 
@@ -11,6 +11,11 @@ const CONNECT_TIMEOUT_MS = 5000
  * publishes on telemetryTopic, subscribes to commandTopic). A payload may
  * hold several newline-separated lines; non-SerLink lines are parsed as
  * plain JSON / CSV telemetry.
+ *
+ * Every line in either direction - frames, acks, and anything else that
+ * arrives on the telemetry topic - is passed to ev.mqttLog, for the MQTT
+ * log page. The LineWriter and the message handler are the only ways in
+ * and out, so nothing is missed.
  */
 export class MqttTransport implements Transport {
   private client: MqttClient | null = null
@@ -37,12 +42,16 @@ export class MqttTransport implements Transport {
     const link = new HubLink(async (line) => {
       if (!client.connected) throw new Error('MQTT not connected')
       await client.publishAsync(this.cfg.commandTopic, line + '\n')
+      this.ev.mqttLog?.({ t: Date.now(), dir: 'out', topic: this.cfg.commandTopic, line })
     }, this.ev, { lift: true })
     this.link = link
 
     client.on('message', (topic, payload) => {
       if (topic !== this.cfg.telemetryTopic) return
-      for (const line of payload.toString().split('\n')) link.receiveLine(line)
+      for (const line of payload.toString().split('\n')) {
+        if (line.trim()) this.ev.mqttLog?.({ t: Date.now(), dir: 'in', topic, line: line.replace(/\r$/, '') })
+        link.receiveLine(line)
+      }
     })
 
     return new Promise((resolve, reject) => {
@@ -100,6 +109,21 @@ export class MqttTransport implements Transport {
   ctrlSet(s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>> {
     if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
     return this.link.ctrlSet(s)
+  }
+
+  ctrlStart(): Promise<void> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.ctrlStart()
+  }
+
+  ctrlStop(): Promise<void> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.ctrlStop()
+  }
+
+  ctrlSetDirection(direction: CtrlDirection): Promise<void> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.ctrlSetDirection(direction)
   }
 
   liftStart(distance: number, direction: LiftDirection): Promise<void> {

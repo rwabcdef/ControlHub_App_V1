@@ -10,11 +10,21 @@ Electron + React + TypeScript desktop app for the **ControlHubAA26** control hub
 shows motor telemetry (RPM, PWM duty, current), sends controller and lift commands, and
 configures the hub. Its normal connection is **MQTT**. The hub runs a SerLink stack over
 MQTT (SerLink2), and the firmware's CLAUDE.md and `Core/Src/main_tasks.cpp` define the
-sockets and frame formats that this app must match.
+sockets and frame formats that this app must match. **The firmware repo's
+`sockets_summary.txt` is the protocol contract** between the hub, this app and the
+Arduino remote hub.
+
+The hub has a mode (`HubApp` in the firmware): **Idle**, **Control** (the motor held at
+the target speed until stopped - started from this app or from the remote hub's
+button) or **Lift** (a lift move - from this app only). It ignores any start unless
+Idle, so the app's start buttons are only enabled then. The target speed, gain and max
+duty live on the hub and start nothing; the lift distance lives in the app.
 
 `README.md` covers the stack choices, the low-latency data path and layout tips. Its
 "Wire protocol (placeholder)" section is out of date: the hub link is SerLink now (see
-below), while JSON/CSV lines are still accepted as a fallback.
+below), while JSON/CSV lines are still accepted as a fallback. `layouts/ControlPanel.tsx`
+(the right-hand aside) still sends the simulator's placeholder commands (`DUTY`, `STOP`,
+`AUTO`), which the hub does not understand.
 
 ## Commands
 
@@ -54,12 +64,15 @@ subscription in preload.
 ### Comms
 
 - `comms/hub.ts` (`commsHub`) owns the active `Transport` (`serial.ts`, `mqtt.ts` or
-  `simulator.ts`, all implementing `transport.ts`). It batches telemetry samples to the
-  renderer every 16 ms and forwards lift status and SerLink trace lines. Late events from
-  a replaced transport are ignored (`live()`).
+  `simulator.ts`, all implementing `transport.ts`). Every 16 ms it batches telemetry
+  samples and MQTT log lines to the renderer, and it forwards lift status, hub state
+  (`IPC.hubState`) and SerLink trace lines as they come. Late events from a replaced
+  transport are ignored (`live()`).
 - `comms/hubLink.ts` (`HubLink`) is the hub's SerLink sockets over any line-oriented link:
-  `CTRL0` (status frames in → telemetry samples, controller commands out) and `LIFT0`
-  (MQTT only). Both the serial and MQTT transports use it.
+  `CTRL0` (status frames in → telemetry samples + hub state; controller settings and
+  Control run commands `BS`/`BX`/`BD` out) and `LIFT0` (MQTT only). Both the serial and
+  MQTT transports use it. When a status frame shows a new run, it reads who started it
+  with `BGO`.
 - `comms/serlink/` is a TypeScript port of SerLink (`Frame.ts`, `SerLink.ts`) that
   behaves like the firmware's Reader/Writer/Socket. A received `'T'` gets an `ACK_OK`
   straight back, `'S'` PING is answered with an `'A'`, and sends are one at a time:
@@ -69,10 +82,12 @@ subscription in preload.
   lines.
 
 **Frame formats are a contract with the firmware.** A change to what a hub socket sends
-or accepts (e.g. the CTRL0 status frame `CTRL0U001008030.0350`, the `BGA` answer, the
-LIFT0 status) must change `parser.ts` / `hubLink.ts` and the firmware together. Field
-limits mirror the firmware's digit widths (`CTRL_RPM_MAX` 9999, `CTRL_GAIN_SCALE` 1e6,
-`LIFT_DISTANCE_MAX` 999999 in `shared/types.ts`).
+or accepts (e.g. the CTRL0 status frame `CTRL0U001015CF030.0350.1234` - mode, direction,
+duty %, RPM, current mA - the `BGA`/`BGM`/`BGO` answers, the LIFT0 status) must change
+`parser.ts` / `hubLink.ts` and the firmware together. Field limits mirror the firmware's
+digit widths and ranges (`CTRL_RPM_MAX` 9999, `CTRL_GAIN_SCALE` 1e6, `CTRL_DUTY_MIN`/`MAX`
+20..100, `LIFT_DISTANCE_MAX` 999999 in `shared/types.ts`). The status frame's current is
+mA on the wire and A in `MotorSample`.
 
 ### MQTT
 
@@ -86,11 +101,26 @@ The topics are a pair because the broker echoes a client's own publishes back to
 Settings persist in `userData/settings.json` (`main/settings.ts`). If the PC is the
 broker, see the hub README's Norton firewall note.
 
-### SerLink trace
+### MQTT log and SerLink trace
 
-With `SERLINK_TRACE` set (dev builds, or `SERLINK_DEBUG` in packaged ones,
-`comms/hub.ts`), every frame sent or received is logged to the main-process console and
-pushed to the renderer on `IPC.serlinkTrace` (`window.api.comms.onTrace`).
+- **MQTT log page** (`pages/LogPage.tsx`, nav "MQTT log"): every line on either MQTT
+  topic, hooked in `mqtt.ts` (the LineWriter going out, the message handler coming in),
+  so it sees acks and non-frame lines too, in packaged builds as well. Lines go to
+  `IPC.mqttLog` in batches and into `state/mqttLog.ts`, a ring buffer outside React state
+  (like the telemetry store) that notifies at most every 200 ms. It is imported in
+  `main.tsx`, so it collects from app start.
+- **SerLink trace**: with `SERLINK_TRACE` set (dev builds, or `SERLINK_DEBUG` in
+  packaged ones, `comms/hub.ts`), every SerLink frame is logged to the main-process
+  console and pushed to the renderer on `IPC.serlinkTrace`, which `state/comms.ts`
+  prints to the DevTools console.
+
+### Settings
+
+- On the hub (CTRL0, read on connecting by `state/ctrl.ts`): gain, max duty, target
+  speed. Edited on Config → ControlHub.
+- In the app (`main/settings.ts` → `userData/settings.json`, `state/controlHub.ts`): the
+  lift distance, also on Config → ControlHub; and the comms config.
+- In the renderer's localStorage (`state/display.ts`): display preferences.
 
 ### Telemetry rendering
 

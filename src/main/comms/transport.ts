@@ -1,4 +1,7 @@
-import { CtrlReadback, CtrlSettings, HubSocket, LiftDirection, LiftStatus, MotorSample, PingReport } from '@shared/types'
+import {
+  CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, HubState, LiftDirection, LiftStatus, MotorSample, MqttLogLine,
+  PingReport
+} from '@shared/types'
 
 /** A sample as decoded from the wire; `t` is optional (host time is used if absent). */
 export type RawSample = Omit<MotorSample, 't'> & { t?: number }
@@ -7,6 +10,10 @@ export interface TransportEvents {
   sample(s: RawSample): void
   /** Lift status / done report */
   lift(s: LiftStatus): void
+  /** The hub's mode and direction, from a CTRL0 status frame (source once read with BGO) */
+  hub(s: HubState): void
+  /** One line of MQTT traffic, either way (MQTT transport only) */
+  mqttLog?(line: MqttLogLine): void
   /** SerLink trace line (frames sent / received, ack timeouts, ...); unset = tracing off */
   trace?(msg: string): void
   /** Non-fatal or fatal link problem; the transport may recover (see `reconnected`) */
@@ -28,6 +35,10 @@ export interface Transport {
   /** Read / set the hub's speed controller B over CTRL0; only on links to the hub */
   ctrlGet?(): Promise<CtrlReadback>
   ctrlSet?(s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>>
+  /** Start a Control run / stop whatever runs / select the direction (CTRL0 BS / BX / BD); only on links to the hub */
+  ctrlStart?(): Promise<void>
+  ctrlStop?(): Promise<void>
+  ctrlSetDirection?(direction: CtrlDirection): Promise<void>
   /** Start the lift for `distance` edges in `direction`; only on links that carry the LIFT0 socket */
   liftStart?(distance: number, direction: LiftDirection): Promise<void>
   /** Lower the lift to its ground sensor, `maxEdges` at most; only on links that carry the LIFT0 socket */

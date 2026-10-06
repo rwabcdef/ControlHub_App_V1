@@ -3,6 +3,7 @@ import { Box, Tab, Tabs } from '@mui/material'
 
 const TABS = [
   { to: '/config/comms', label: 'Communications' },
+  { to: '/config/controlhub', label: 'ControlHub' },
   { to: '/config/display', label: 'Display' }
 ]
 

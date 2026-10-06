@@ -1,32 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
-  Alert, Box, Button, Divider, MenuItem, Stack, TextField, Tooltip, Typography, type SxProps, type Theme
+  Alert, Box, Button, Chip, Divider, MenuItem, Stack, TextField, Tooltip, Typography, type SxProps, type Theme
 } from '@mui/material'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
-import SaveIcon from '@mui/icons-material/Save'
 import StopIcon from '@mui/icons-material/Stop'
-import {
-  CTRL_GAIN_MAX, CTRL_GAIN_SCALE, CTRL_RPM_MAX, LIFT_DISTANCE_MAX, type LiftDirection
-} from '@shared/types'
+import { LIFT_DISTANCE_MAX, type CtrlDirection, type HubState, type LiftDirection } from '@shared/types'
 import { Panel } from '../components/Panel'
 import { useComms } from '../state/comms'
-import { CtrlMode, useCtrl } from '../state/ctrl'
+import { useControlHub } from '../state/controlHub'
+import { useCtrl } from '../state/ctrl'
+import { useHub } from '../state/hub'
 import { useLift } from '../state/lift'
 import { errorMessage } from '../util'
 
-/** Distance box value as edges, or null unless it's a whole number in 1..LIFT_DISTANCE_MAX. */
-function parseDistance(text: string): number | null {
-  if (!/^\d+$/.test(text.trim())) return null
-  const n = Number(text)
-  return n >= 1 && n <= LIFT_DISTANCE_MAX ? n : null
-}
-
-/** Down's max edges: the distance box plus 20% headroom, capped at LIFT_DISTANCE_MAX. */
+/** Down's max edges: the distance plus 20% headroom, capped at LIFT_DISTANCE_MAX. */
 const downMaxEdges = (distance: number): number => Math.min(Math.ceil(distance * 1.2), LIFT_DISTANCE_MAX)
 
-/** Control section layouts */
+/** Lift section layouts */
 type MoveMode = 'upDown' | 'forRev'
 
 const MOVE_MODES: { value: MoveMode; label: string }[] = [
@@ -34,51 +26,58 @@ const MOVE_MODES: { value: MoveMode; label: string }[] = [
   { value: 'forRev', label: 'For/Rev' }
 ]
 
+const DIRECTIONS: { value: CtrlDirection & LiftDirection; label: string }[] = [
+  { value: 'forward', label: 'Forward' },
+  { value: 'reverse', label: 'Reverse' }
+]
+
+type Busy = 'start' | 'stop' | 'direction' | 'up' | 'down' | 'move' | null
+
 /**
- * Dashboard's Control panel: moves the hub's lift (LIFT0 socket, over MQTT)
- * and shows Done once the hub reports it idle. Up/Down: Up starts it
- * forward for the distance, Down lowers it to the ground sensor (distance
- * + 20% at most). For/Rev: starts it for the distance and direction chosen.
+ * Dashboard's Control panel. The hub (HubApp in the firmware) is in one mode
+ * at a time - Idle, Control or Lift - and ignores a start unless Idle, so
+ * the start buttons are only enabled then. Stop ends either.
+ *
+ * Control: a run at the target speed (Config -> ControlHub) in the chosen
+ * direction, until stopped - from here or from the remote hub.
+ * Lift: Up/Down moves the lift up by the configured distance, or down to its
+ * ground sensor (the distance + 20% at most); For/Rev moves it the distance
+ * in the direction chosen. The hub reports the move's end (Done).
  */
 export function DashboardControl({ sx }: { sx?: SxProps<Theme> }): React.JSX.Element {
   const connected = useComms((s) => s.state.status === 'connected')
-  const { status, done, start, down, stop } = useLift()
+  const hub = useHub((s) => s.hub)
+  const ctrl = useCtrl()
+  const lift = useLift()
+  const liftDistance = useControlHub((s) => s.liftDistance)
   const [moveMode, setMoveMode] = useState<MoveMode>('upDown')
-  const [distance, setDistance] = useState('')
   // Kept between starts, so repeating a move is just Start again.
-  const [direction, setDirection] = useState<LiftDirection>('forward')
-  // Which move button is waiting on its send
-  const [busy, setBusy] = useState<'up' | 'down' | 'start' | 'stop' | null>(null)
+  const [liftDirection, setLiftDirection] = useState<LiftDirection>('forward')
+  const [busy, setBusy] = useState<Busy>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const value = parseDistance(distance)
-  const invalid = distance.trim() !== '' && value === null
-  // Why the move buttons are disabled, if they are
-  const blocked = !connected ? 'Connect first' : value === null ? 'Enter a distance (edges)' : ''
+  const idle = hub?.mode === 'idle'
+  // Why the start buttons are disabled, if they are
+  const blocked = !connected ? 'Connect first'
+    : !hub ? 'Waiting for the hub'
+      : !idle ? 'The hub is running - stop it first' : ''
 
-  const run = (which: NonNullable<typeof busy>, send: () => Promise<void>): void => {
+  const run = (which: NonNullable<Busy>, send: () => Promise<void>): void => {
+    if (busy) return
     setError(null)
     setBusy(which)
     send()
       .catch((e) => setError(errorMessage(e)))
       .finally(() => setBusy(null))
   }
-  const onMove = (which: 'up' | 'down' | 'start'): void => {
-    if (blocked || value === null || busy) return
-    run(which, () => which === 'up' ? start(value, 'forward')
-      : which === 'down' ? down(downMaxEdges(value))
-        : start(value, direction))
-  }
-  const onStop = (): void => {
-    if (connected) run('stop', stop)
-  }
 
-  const moveButton = (which: 'up' | 'down' | 'start', label: string, icon: React.ReactNode): React.JSX.Element => (
-    <Tooltip title={blocked}>
+  const button = (which: NonNullable<Busy>, label: string, icon: React.ReactNode, send: () => Promise<void>,
+    reason = blocked): React.JSX.Element => (
+    <Tooltip title={reason}>
       {/* span: a disabled button fires no events, so the tooltip needs a wrapper */}
       <span style={{ display: 'flex', flex: 1 }}>
         <Button fullWidth variant="contained" startIcon={icon} loading={busy === which}
-          disabled={!!blocked || (busy !== null && busy !== which)} onClick={() => onMove(which)}>
+          disabled={!!reason || (busy !== null && busy !== which)} onClick={() => run(which, send)}>
           {label}
         </Button>
       </span>
@@ -86,177 +85,73 @@ export function DashboardControl({ sx }: { sx?: SxProps<Theme> }): React.JSX.Ele
   )
 
   return (
-    <Panel title="Control" sx={sx}>
+    <Panel title="Control" action={<ModeChip hub={hub} />} sx={sx}>
       <Stack spacing={1.5}>
+        <Typography variant="overline" sx={{ lineHeight: 1.5 }}>Control</Typography>
+        <TextField select label="Direction" size="small" value={hub?.direction ?? 'forward'}
+          disabled={!!blocked || busy !== null}
+          onChange={(e) => run('direction', () => ctrl.setDirection(e.target.value as CtrlDirection))}>
+          {DIRECTIONS.map((d) => <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
+        </TextField>
+        {button('start', 'Start', <PlayArrowIcon />, ctrl.start)}
+        <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', mt: '4px !important' }}>
+          at {ctrl.rpm ?? '-'} RPM
+        </Typography>
+
+        <Divider />
+
+        <Typography variant="overline" sx={{ lineHeight: 1.5 }}>Lift</Typography>
         <TextField select label="Mode" size="small" value={moveMode}
           onChange={(e) => setMoveMode(e.target.value as MoveMode)}>
           {MOVE_MODES.map((m) => <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>)}
         </TextField>
 
-        <TextField label="Distance" size="small" type="number" value={distance}
-          onChange={(e) => setDistance(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && moveMode === 'forRev' && onMove('start')}
-          error={invalid}
-          helperText={invalid ? `1 to ${LIFT_DISTANCE_MAX}`
-            : moveMode === 'upDown' && value !== null ? `edges (Down: ${downMaxEdges(value)} max)` : 'edges'}
-          slotProps={{ htmlInput: { min: 1, max: LIFT_DISTANCE_MAX, step: 1 } }} />
-
         {moveMode === 'upDown' ? (
           <Stack direction="row" spacing={1}>
-            {moveButton('up', 'Up', <ArrowUpwardIcon />)}
-            {moveButton('down', 'Down', <ArrowDownwardIcon />)}
+            {button('up', 'Up', <ArrowUpwardIcon />, () => lift.start(liftDistance, 'forward'))}
+            {button('down', 'Down', <ArrowDownwardIcon />, () => lift.down(downMaxEdges(liftDistance)))}
           </Stack>
         ) : (
           <>
-            <TextField select label="Direction" size="small" value={direction}
-              onChange={(e) => setDirection(e.target.value as LiftDirection)}>
+            <TextField select label="Direction" size="small" value={liftDirection}
+              onChange={(e) => setLiftDirection(e.target.value as LiftDirection)}>
               {DIRECTIONS.map((d) => <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
             </TextField>
-            {moveButton('start', 'Start', <PlayArrowIcon />)}
+            {button('move', 'Start', <PlayArrowIcon />, () => lift.start(liftDistance, liftDirection))}
           </>
         )}
+        <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', mt: '4px !important' }}>
+          {liftDistance} edges{moveMode === 'upDown' ? ` (Down: ${downMaxEdges(liftDistance)} max)` : ''}
+        </Typography>
 
-        <Tooltip title={connected ? '' : 'Connect first'}>
-          <span style={{ display: 'flex' }}>
-            <Button fullWidth variant="contained" color="error" startIcon={<StopIcon />}
-              loading={busy === 'stop'} disabled={!connected} onClick={onStop}>
-              Stop
-            </Button>
-          </span>
-        </Tooltip>
-
-        <DoneIndicator done={done} />
-        {status && (
+        <DoneIndicator done={lift.done} />
+        {lift.status && (
           <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', mt: '4px !important' }}>
-            {status.travelled} / {status.target} edges
+            {lift.status.travelled} / {lift.status.target} edges
           </Typography>
         )}
 
-        {moveMode === 'forRev' && (
-          // Not wired up yet
-          <Button variant="outlined" disabled>
-            Reset
-          </Button>
-        )}
+        <Divider />
+
+        {button('stop', 'Stop', <StopIcon />, ctrl.stop, connected ? '' : 'Connect first')}
 
         {error && <Alert severity="error" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
-
-        <Divider />
-        <ControllerSettings connected={connected} />
       </Stack>
     </Panel>
   )
 }
 
-/** The F / R of the LIFT0 start (BSF234 / BSR234) */
-const DIRECTIONS: { value: LiftDirection; label: string }[] = [
-  { value: 'forward', label: 'Forward' },
-  { value: 'reverse', label: 'Reverse' }
-]
+const MODE_LABEL = { idle: 'Idle', control: 'Control', lift: 'Lift' } as const
+const MODE_COLOR = { idle: 'default', control: 'success', lift: 'info' } as const
+const SOURCE_LABEL = { pc: 'PC', remote: 'Remote', none: '' } as const
 
-const MODES: { value: CtrlMode; label: string }[] = [
-  { value: 'integral', label: 'Integral' },
-  { value: 'proportional', label: 'Proportional' },
-  { value: 'integralProportional', label: 'Integral - Proportional' }
-]
-
-/** Gain box value, or null unless 0..CTRL_GAIN_MAX with at most 6 decimals (the hub's millionths). */
-function parseGain(text: string): number | null {
-  const t = text.trim()
-  if (!/^(\d+(\.\d{0,6})?|\.\d{1,6})$/.test(t)) return null
-  const n = Number(t)
-  return n <= CTRL_GAIN_MAX ? n : null
-}
-
-/** RPM box value, or null unless a whole number in 1..CTRL_RPM_MAX. */
-function parseRpm(text: string): number | null {
-  if (!/^\d+$/.test(text.trim())) return null
-  const n = Number(text)
-  return n >= 1 && n <= CTRL_RPM_MAX ? n : null
-}
-
-const sameGain = (a: number, b: number): boolean => Math.round(a * CTRL_GAIN_SCALE) === Math.round(b * CTRL_GAIN_SCALE)
-
-/**
- * Speed controller B's settings (CTRL0 socket): read with BGA on connecting,
- * and Save sends whichever of BI (then BGI to check it) and BR changed.
- */
-function ControllerSettings({ connected }: { connected: boolean }): React.JSX.Element {
-  const { mode, gainI, rpm, loading, loadError, setMode, load, save } = useCtrl()
-  const [gainText, setGainText] = useState('')
-  const [rpmText, setRpmText] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // Show the hub's values whenever they're read or saved.
-  useEffect(() => setGainText(gainI === null ? '' : String(gainI)), [gainI])
-  useEffect(() => setRpmText(rpm === null ? '' : String(rpm)), [rpm])
-
-  const gain = parseGain(gainText)
-  const rpmValue = parseRpm(rpmText)
-  const gainInvalid = gainText.trim() !== '' && gain === null
-  const rpmInvalid = rpmText.trim() !== '' && rpmValue === null
-  const gainChanged = gain !== null && (gainI === null || !sameGain(gain, gainI))
-  const rpmChanged = rpmValue !== null && rpmValue !== rpm
-
-  // Why Save is disabled, if it is
-  const blocked = !connected ? 'Connect first'
-    : gainInvalid || rpmInvalid ? 'Fix the values first'
-      : !gainChanged && !rpmChanged ? 'Nothing changed' : ''
-
-  const onSave = (): void => {
-    if (blocked || saving) return
-    setError(null)
-    setSaving(true)
-    save({ gainI: gainChanged ? gain! : undefined, rpm: rpmChanged ? rpmValue! : undefined })
-      .catch((e) => setError(errorMessage(e)))
-      .finally(() => setSaving(false))
-  }
-  const onKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key === 'Enter') onSave()
-  }
-
+/** The hub's mode, and who started the run: e.g. "Control · Remote". */
+function ModeChip({ hub }: { hub: HubState | null }): React.JSX.Element {
+  if (!hub) return <Chip size="small" variant="outlined" label="—" />
+  const source = hub.source ? SOURCE_LABEL[hub.source] : ''
   return (
-    <Stack spacing={1.5}>
-      <TextField select label="Controller" size="small" value={mode}
-        onChange={(e) => setMode(e.target.value as CtrlMode)}>
-        {MODES.map((m) => <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>)}
-      </TextField>
-
-      {mode !== 'integral' ? (
-        <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
-          Not available yet
-        </Typography>
-      ) : (
-        <>
-          <TextField label="Gain" size="small" value={gainText} disabled={!connected || loading}
-            onChange={(e) => setGainText(e.target.value)} onKeyDown={onKeyDown}
-            error={gainInvalid} helperText={gainInvalid ? `0 to ${CTRL_GAIN_MAX}` : 'integral'}
-            slotProps={{ htmlInput: { inputMode: 'decimal' } }} />
-          <TextField label="RPM" size="small" type="number" value={rpmText} disabled={!connected || loading}
-            onChange={(e) => setRpmText(e.target.value)} onKeyDown={onKeyDown}
-            error={rpmInvalid} helperText={rpmInvalid ? `1 to ${CTRL_RPM_MAX}` : 'required'}
-            slotProps={{ htmlInput: { min: 1, max: CTRL_RPM_MAX, step: 1 } }} />
-
-          <Tooltip title={blocked}>
-            <span style={{ display: 'flex' }}>
-              <Button fullWidth variant="contained" startIcon={<SaveIcon />} loading={saving}
-                disabled={!!blocked} onClick={onSave}>
-                Save
-              </Button>
-            </span>
-          </Tooltip>
-
-          {loadError && (
-            <Alert severity="warning" variant="outlined"
-              action={<Button size="small" color="inherit" onClick={() => void load()}>Retry</Button>}>
-              Couldn't read values: {loadError}
-            </Alert>
-          )}
-          {error && <Alert severity="error" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
-        </>
-      )}
-    </Stack>
+    <Chip size="small" color={MODE_COLOR[hub.mode]} variant={hub.mode === 'idle' ? 'outlined' : 'filled'}
+      label={source ? `${MODE_LABEL[hub.mode]} · ${source}` : MODE_LABEL[hub.mode]} />
   )
 }
 

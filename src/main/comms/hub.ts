@@ -1,6 +1,7 @@
 import { app, ipcMain, WebContents } from 'electron'
 import {
-  CommsConfig, CommsState, CtrlReadback, CtrlSettings, HubSocket, IPC, LiftDirection, MotorSample, PingReport
+  CommsConfig, CommsState, ControlHubSettings, CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, IPC,
+  LIFT_DISTANCE_MAX, LiftDirection, MotorSample, MqttLogLine, PingReport
 } from '@shared/types'
 import { getSettings, updateSettings } from '../settings'
 import { MqttTransport } from './mqtt'
@@ -12,6 +13,8 @@ import { Transport, TransportEvents } from './transport'
 const FLUSH_MS = 16
 /** Drop the oldest samples if the renderer stalls, rather than growing without bound. */
 const MAX_PENDING = 20_000
+/** The same for MQTT log lines, which go out with the samples */
+const MAX_PENDING_LOG = 5_000
 /** Trace SerLink traffic to the terminal and the renderer's DevTools console: in dev, or with SERLINK_DEBUG set. */
 const SERLINK_TRACE = !app.isPackaged || !!process.env.SERLINK_DEBUG
 
@@ -23,6 +26,7 @@ class CommsHub {
   private transport: Transport | null = null
   private target: WebContents | null = null
   private pending: MotorSample[] = []
+  private pendingLog: MqttLogLine[] = []
   private flushTimer: NodeJS.Timeout | null = null
   private t0 = 0
   private state: CommsState = { status: 'disconnected', kind: getSettings().comms.kind }
@@ -43,6 +47,7 @@ class CommsHub {
     this.setState({ status: 'connecting', kind: cfg.kind })
     this.t0 = performance.now()
     this.pending = []
+    this.pendingLog = []
 
     let transport: Transport | null = null
     // Ignore late events from a transport that has since been replaced.
@@ -55,6 +60,16 @@ class CommsHub {
       },
       lift: (s) => {
         if (live() && this.target && !this.target.isDestroyed()) this.target.send(IPC.liftStatus, s)
+      },
+      hub: (s) => {
+        if (live() && this.target && !this.target.isDestroyed()) this.target.send(IPC.hubState, s)
+      },
+      mqttLog: (line) => {
+        if (!live()) return
+        this.pendingLog.push(line)
+        if (this.pendingLog.length > MAX_PENDING_LOG) {
+          this.pendingLog.splice(0, this.pendingLog.length - MAX_PENDING_LOG)
+        }
       },
       trace: SERLINK_TRACE
         ? (msg): void => {
@@ -126,6 +141,24 @@ class CommsHub {
     return this.transport.ctrlSet(s)
   }
 
+  async ctrlStart(): Promise<void> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.ctrlStart) throw new Error('Control runs need a serial or MQTT connection')
+    await this.transport.ctrlStart()
+  }
+
+  async ctrlStop(): Promise<void> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.ctrlStop) throw new Error('Control runs need a serial or MQTT connection')
+    await this.transport.ctrlStop()
+  }
+
+  async ctrlSetDirection(direction: CtrlDirection): Promise<void> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.ctrlSetDirection) throw new Error('Control runs need a serial or MQTT connection')
+    await this.transport.ctrlSetDirection(direction)
+  }
+
   async liftStart(distance: number, direction: LiftDirection): Promise<void> {
     if (!this.transport) throw new Error('Not connected')
     if (!this.transport.liftStart) throw new Error('Lift control needs an MQTT connection')
@@ -151,10 +184,16 @@ class CommsHub {
   }
 
   private flush(): void {
-    if (this.pending.length === 0) return
-    const batch = this.pending
-    this.pending = []
-    if (this.target && !this.target.isDestroyed()) this.target.send(IPC.commsSamples, batch)
+    if (this.pending.length > 0) {
+      const batch = this.pending
+      this.pending = []
+      if (this.target && !this.target.isDestroyed()) this.target.send(IPC.commsSamples, batch)
+    }
+    if (this.pendingLog.length > 0) {
+      const lines = this.pendingLog
+      this.pendingLog = []
+      if (this.target && !this.target.isDestroyed()) this.target.send(IPC.mqttLog, lines)
+    }
   }
 
   private setState(s: CommsState): void {
@@ -180,9 +219,22 @@ export function registerCommsIpc(): void {
   ipcMain.handle(IPC.ctrlSet, (_e, s: Partial<CtrlSettings>) =>
     commsHub.ctrlSet({
       gainI: s?.gainI === undefined ? undefined : Number(s.gainI),
-      rpm: s?.rpm === undefined ? undefined : Number(s.rpm)
+      rpm: s?.rpm === undefined ? undefined : Number(s.rpm),
+      maxDuty: s?.maxDuty === undefined ? undefined : Number(s.maxDuty)
     })
   )
+  ipcMain.handle(IPC.ctrlStart, () => commsHub.ctrlStart())
+  ipcMain.handle(IPC.ctrlStop, () => commsHub.ctrlStop())
+  // direction is validated in HubLink.ctrlSetDirection() - it is untrusted input from the renderer
+  ipcMain.handle(IPC.ctrlSetDirection, (_e, direction: CtrlDirection) => commsHub.ctrlSetDirection(direction))
+  ipcMain.handle(IPC.controlHubGet, () => getSettings().controlHub)
+  ipcMain.handle(IPC.controlHubSet, (_e, s: Partial<ControlHubSettings>) => {
+    const liftDistance = Number(s?.liftDistance)
+    if (!Number.isInteger(liftDistance) || liftDistance < 1 || liftDistance > LIFT_DISTANCE_MAX) {
+      throw new Error(`Lift distance must be a whole number from 1 to ${LIFT_DISTANCE_MAX}`)
+    }
+    return updateSettings({ controlHub: { ...getSettings().controlHub, liftDistance } }).controlHub
+  })
   // direction is validated in HubLink.liftStart() - it is untrusted input from the renderer
   ipcMain.handle(IPC.liftStart, (_e, distance: number, direction: LiftDirection) =>
     commsHub.liftStart(Number(distance), direction)

@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { CommsConfig, DEFAULT_COMMS_CONFIG } from '@shared/types'
+import { CommsConfig, ControlHubSettings, DEFAULT_COMMS_CONFIG, DEFAULT_CONTROL_HUB_SETTINGS } from '@shared/types'
 
 // Persisted app settings owned by the main process (userData/settings.json).
 // UI-only preferences live in the renderer (localStorage) instead.
@@ -9,6 +9,8 @@ export interface Settings {
   comms: CommsConfig
   /** Directories the user has granted file access to */
   allowedDirs: string[]
+  /** Config -> ControlHub settings kept by the app (the hub keeps gain, max duty and speed) */
+  controlHub: ControlHubSettings
 }
 
 let cache: Settings | null = null
@@ -30,7 +32,8 @@ export function getSettings(): Settings {
       serial: { ...DEFAULT_COMMS_CONFIG.serial, ...stored.comms?.serial },
       mqtt: { ...DEFAULT_COMMS_CONFIG.mqtt, ...stored.comms?.mqtt }
     },
-    allowedDirs: stored.allowedDirs ?? []
+    allowedDirs: stored.allowedDirs ?? [],
+    controlHub: { ...DEFAULT_CONTROL_HUB_SETTINGS, ...stored.controlHub }
   }
   return cache
 }

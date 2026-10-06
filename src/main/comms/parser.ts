@@ -1,4 +1,4 @@
-import { LiftStatus } from '@shared/types'
+import { HubMode, HubSource, HubState, LiftStatus } from '@shared/types'
 import { RawSample } from './transport'
 
 /**
@@ -31,14 +31,29 @@ export function parseLine(raw: string): RawSample | null {
   return { rpm, duty, current, t: Number.isFinite(t) ? t : undefined }
 }
 
+const HUB_MODES: Record<string, HubMode> = { I: 'idle', C: 'control', L: 'lift' }
+
 /**
- * Data of the hub's CTRL0 status frame, e.g. 030.0350 from CTRL0U001008030.0350:
- * <pwm %:3>.<rpm:4>. The hub doesn't report current, so it is NaN ("no data").
+ * Data of the hub's CTRL0 status frame, e.g. CF030.0350.1234 from
+ * CTRL0U001015CF030.0350.1234:
+ *   <mode I|C|L><direction F|R><duty %:3>.<measured rpm:4>.<current mA:4>
+ * Sent on MQTT every 500 ms while the hub runs (Control or Lift), and once
+ * when it goes idle. The sample's current is in A.
  */
-export function parseCtrlStatus(data: string): RawSample | null {
-  const m = /^(\d{3})\.(\d{4})$/.exec(data)
+export function parseCtrlStatus(data: string): { sample: RawSample; hub: HubState } | null {
+  const m = /^([ICL])([FR])(\d{3})\.(\d{4})\.(\d{4})$/.exec(data)
   if (!m) return null
-  return { duty: Number(m[1]), rpm: Number(m[2]), current: NaN }
+  return {
+    sample: { duty: Number(m[3]), rpm: Number(m[4]), current: Number(m[5]) / 1000 },
+    hub: { mode: HUB_MODES[m[1]], direction: m[2] === 'R' ? 'reverse' : 'forward' }
+  }
+}
+
+/** BGO's answer, e.g. CP: <mode I|C|L><source P|R|->. */
+export function parseHubMode(data: string): { mode: HubMode; source: HubSource } | null {
+  const m = /^([ICL])([PR-])$/.exec(data)
+  if (!m) return null
+  return { mode: HUB_MODES[m[1]], source: m[2] === 'P' ? 'pc' : m[2] === 'R' ? 'remote' : 'none' }
 }
 
 /**

@@ -1,15 +1,19 @@
 import {
+  CTRL_DUTY_MAX,
+  CTRL_DUTY_MIN,
   CTRL_GAIN_MAX,
   CTRL_GAIN_SCALE,
   CTRL_RPM_MAX,
+  CtrlDirection,
   CtrlReadback,
   CtrlSettings,
   HubSocket,
+  HubState,
   LIFT_DISTANCE_MAX,
   LiftDirection,
   PingReport
 } from '@shared/types'
-import { parseCtrlStatus, parseLiftStatus, parseLine } from './parser'
+import { parseCtrlStatus, parseHubMode, parseLiftStatus, parseLine } from './parser'
 import { Frame } from './serlink/Frame'
 import { LineWriter, SendFrameResult, SerLink, Socket } from './serlink/SerLink'
 import { TransportEvents } from './transport'
@@ -35,6 +39,8 @@ export class HubLink {
   readonly serLink: SerLink
   readonly ctrl: Socket
   readonly lift: Socket | null
+  /** The hub's state as last reported, to spot a change of mode */
+  private hub: HubState | null = null
 
   constructor(
     write: LineWriter,
@@ -45,7 +51,9 @@ export class HubLink {
     this.serLink = new SerLink(write, { debug: trace })
     this.ctrl = this.serLink.acquireSocket(CTRL_PROTOCOL, (frame) => {
       const s = parseCtrlStatus(frame.data)
-      if (s) this.ev.sample(s)
+      if (!s) return
+      this.ev.sample(s.sample)
+      this.onHubStatus(s.hub)
     })
     this.lift = opts.lift
       ? this.serLink.acquireSocket(LIFT_PROTOCOL, (frame) => {
@@ -76,18 +84,42 @@ export class HubLink {
     return checkResult(frame ? frame.protocol : CTRL_PROTOCOL, result)
   }
 
-  /** Read controller B's settings: CTRL0T529003BGA -> CTRL0A529016002000.0150.0148 */
+  /**
+   * Read controller B's settings and the hub's state:
+   *   BGA -> 002000.0150.0148  gain, target RPM, measured RPM
+   *   BGM -> 050               max duty
+   *   BGD -> F                 selected direction
+   *   BGO -> CP                mode and who started the run
+   */
   async ctrlGet(): Promise<CtrlReadback> {
     const data = await this.sendCtrl('BGA')
     const m = /^(\d{6})\.(\d{4})\.(\d{4})$/.exec(data ?? '')
     if (!m) throw new Error(`${CTRL_PROTOCOL}: unexpected BGA reply "${data ?? ''}"`)
-    return { gainI: Number(m[1]) / CTRL_GAIN_SCALE, rpm: Number(m[2]), measuredRpm: Number(m[3]) }
+    const maxDuty = await this.sendCtrl('BGM')
+    if (!/^\d{3}$/.test(maxDuty ?? '')) throw new Error(`${CTRL_PROTOCOL}: unexpected BGM reply "${maxDuty ?? ''}"`)
+    const dir = await this.sendCtrl('BGD')
+    if (dir !== 'F' && dir !== 'R') throw new Error(`${CTRL_PROTOCOL}: unexpected BGD reply "${dir ?? ''}"`)
+    const mode = await this.sendCtrl('BGO')
+    const hubMode = parseHubMode(mode ?? '')
+    if (!hubMode) throw new Error(`${CTRL_PROTOCOL}: unexpected BGO reply "${mode ?? ''}"`)
+
+    const hub: HubState = { ...hubMode, direction: dir === 'R' ? 'reverse' : 'forward' }
+    this.hub = hub
+    this.ev.hub(hub)
+    return {
+      gainI: Number(m[1]) / CTRL_GAIN_SCALE,
+      rpm: Number(m[2]),
+      measuredRpm: Number(m[3]),
+      maxDuty: Number(maxDuty),
+      hub
+    }
   }
 
   /**
-   * Set controller B's integral gain and / or requested RPM (BI002000,
-   * BR0120). The gain is read back with BGI, and the result is what the hub
-   * now holds; rejects if the read back gain differs from the one sent.
+   * Set controller B's integral gain, target RPM and / or max duty (BI002000,
+   * BR0120, BM050). The gain and the max duty are read back (BGI, BGM), and
+   * the result is what the hub now holds; rejects if a read back value
+   * differs from the one sent. None of them starts anything.
    */
   async ctrlSet(s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>> {
     const out: Partial<CtrlSettings> = {}
@@ -108,7 +140,42 @@ export class HubLink {
       await this.sendCtrl(`BR${String(s.rpm).padStart(4, '0')}`)
       out.rpm = s.rpm
     }
+    if (s.maxDuty !== undefined) {
+      if (!Number.isInteger(s.maxDuty) || s.maxDuty < CTRL_DUTY_MIN || s.maxDuty > CTRL_DUTY_MAX) {
+        throw new Error(`Max duty must be a whole number from ${CTRL_DUTY_MIN} to ${CTRL_DUTY_MAX}`)
+      }
+      await this.sendCtrl(`BM${String(s.maxDuty).padStart(3, '0')}`)
+      // The hub ignores a value it won't take, so the read back is the check.
+      const back = await this.sendCtrl('BGM')
+      if (Number(back) !== s.maxDuty) {
+        throw new Error(`Max duty read back as ${back ?? '?'}, not ${s.maxDuty}`)
+      }
+      out.maxDuty = s.maxDuty
+    }
     return out
+  }
+
+  /**
+   * Start a Control run at the target speed in the selected direction:
+   * CTRL0T...BS. The hub ignores it unless idle - the status frames that
+   * follow (or BGO) say whether it started.
+   */
+  async ctrlStart(): Promise<void> {
+    await this.sendCtrl('BS')
+  }
+
+  /** Stop whatever is running - a Control run or a lift move: CTRL0T...BX. */
+  async ctrlStop(): Promise<void> {
+    await this.sendCtrl('BX')
+  }
+
+  /** Select the direction of the next Control run: CTRL0T...BDF / BDR. Ignored unless idle. */
+  async ctrlSetDirection(direction: CtrlDirection): Promise<void> {
+    // Checked here too, not just typed: it arrives from the renderer over IPC.
+    if (direction !== 'forward' && direction !== 'reverse') {
+      throw new Error(`Direction must be forward or reverse, not "${String(direction)}"`)
+    }
+    await this.sendCtrl(direction === 'forward' ? 'BDF' : 'BDR')
   }
 
   /**
@@ -173,6 +240,31 @@ export class HubLink {
 
   close(): void {
     this.serLink.close()
+  }
+
+  /**
+   * A CTRL0 status frame's mode and direction. Passed on at once; when the
+   * mode changes to a run, who started it is read with BGO and passed on
+   * again. Idle has no source.
+   */
+  private onHubStatus(s: HubState): void {
+    const changed = this.hub?.mode !== s.mode
+    const source = s.mode === 'idle' ? 'none' : changed ? undefined : this.hub?.source
+    this.hub = { ...s, source }
+    this.ev.hub(this.hub)
+    if (changed && s.mode !== 'idle') {
+      this.sendCtrl('BGO')
+        .then((data) => {
+          const m = parseHubMode(data ?? '')
+          if (m && this.hub && m.mode === this.hub.mode) {
+            this.hub = { ...this.hub, source: m.source }
+            this.ev.hub(this.hub)
+          }
+        })
+        .catch(() => {
+          // The next mode change tries again; the status frames carry on regardless.
+        })
+    }
   }
 
   /** Send CTRL0 data in a 'T' frame; resolves with any data on the ack. */
