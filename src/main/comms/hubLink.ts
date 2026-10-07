@@ -117,9 +117,10 @@ export class HubLink {
 
   /**
    * Set controller B's integral gain, target RPM and / or max duty (BI002000,
-   * BR0120, BM050). The gain and the max duty are read back (BGI, BGM), and
-   * the result is what the hub now holds; rejects if a read back value
-   * differs from the one sent. None of them starts anything.
+   * BR0120, BM050). Each is read back (BGI, BGR, BGM) - the hub refuses BR
+   * during a lift move, and a max duty out of its range - and the result is
+   * what the hub now holds; rejects if a read back value differs from the
+   * one sent. None of them starts anything.
    */
   async ctrlSet(s: Partial<CtrlSettings>): Promise<Partial<CtrlSettings>> {
     const out: Partial<CtrlSettings> = {}
@@ -134,10 +135,16 @@ export class HubLink {
       out.gainI = micro / CTRL_GAIN_SCALE
     }
     if (s.rpm !== undefined) {
-      if (!Number.isInteger(s.rpm) || s.rpm < 1 || s.rpm > CTRL_RPM_MAX) {
-        throw new Error(`RPM must be a whole number from 1 to ${CTRL_RPM_MAX}`)
+      if (!Number.isInteger(s.rpm) || s.rpm < 0 || s.rpm > CTRL_RPM_MAX) {
+        throw new Error(`RPM must be a whole number from 0 to ${CTRL_RPM_MAX}`)
       }
       await this.sendCtrl(`BR${String(s.rpm).padStart(4, '0')}`)
+      // The hub refuses a new target during a lift move, so the read back is the check.
+      const back = await this.sendCtrl('BGR')
+      if (!/^\d{4}$/.test(back ?? '')) throw new Error(`${CTRL_PROTOCOL}: unexpected BGR reply "${back ?? ''}"`)
+      if (Number(back) !== s.rpm) {
+        throw new Error(`The hub kept ${Number(back)} RPM, not ${s.rpm} (refused during a lift move)`)
+      }
       out.rpm = s.rpm
     }
     if (s.maxDuty !== undefined) {

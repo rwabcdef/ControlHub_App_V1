@@ -1,6 +1,6 @@
 import { app, ipcMain, WebContents } from 'electron'
 import {
-  CommsConfig, CommsState, ControlHubSettings, CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, IPC,
+  CommsConfig, CommsState, ControlHubSettings, CTRL_RPM_MAX, CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, IPC,
   LIFT_DISTANCE_MAX, LiftDirection, MotorSample, MqttLogLine, PingReport
 } from '@shared/types'
 import { getSettings, updateSettings } from '../settings'
@@ -229,11 +229,23 @@ export function registerCommsIpc(): void {
   ipcMain.handle(IPC.ctrlSetDirection, (_e, direction: CtrlDirection) => commsHub.ctrlSetDirection(direction))
   ipcMain.handle(IPC.controlHubGet, () => getSettings().controlHub)
   ipcMain.handle(IPC.controlHubSet, (_e, s: Partial<ControlHubSettings>) => {
-    const liftDistance = Number(s?.liftDistance)
-    if (!Number.isInteger(liftDistance) || liftDistance < 1 || liftDistance > LIFT_DISTANCE_MAX) {
-      throw new Error(`Lift distance must be a whole number from 1 to ${LIFT_DISTANCE_MAX}`)
+    // Untrusted input from the renderer: check each field given, keep the rest.
+    const next = { ...getSettings().controlHub }
+    if (s?.liftDistance !== undefined) {
+      const liftDistance = Number(s.liftDistance)
+      if (!Number.isInteger(liftDistance) || liftDistance < 1 || liftDistance > LIFT_DISTANCE_MAX) {
+        throw new Error(`Lift distance must be a whole number from 1 to ${LIFT_DISTANCE_MAX}`)
+      }
+      next.liftDistance = liftDistance
     }
-    return updateSettings({ controlHub: { ...getSettings().controlHub, liftDistance } }).controlHub
+    if (s?.dialRpmMax !== undefined) {
+      const dialRpmMax = Number(s.dialRpmMax)
+      if (!Number.isInteger(dialRpmMax) || dialRpmMax < 1 || dialRpmMax > CTRL_RPM_MAX) {
+        throw new Error(`Dial max speed must be a whole number from 1 to ${CTRL_RPM_MAX}`)
+      }
+      next.dialRpmMax = dialRpmMax
+    }
+    return updateSettings({ controlHub: next }).controlHub
   })
   // direction is validated in HubLink.liftStart() - it is untrusted input from the renderer
   ipcMain.handle(IPC.liftStart, (_e, distance: number, direction: LiftDirection) =>

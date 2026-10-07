@@ -117,9 +117,14 @@ broker, see the hub README's Norton firewall note.
 ### Settings
 
 - On the hub (CTRL0, read on connecting by `state/ctrl.ts`): gain, max duty, target
-  speed. Edited on Config → ControlHub.
+  speed. Edited on Config → ControlHub. The target speed is also the dashboard's speed
+  dial (`components/SpeedDial.tsx`, `useCtrl.setRpmLive()`, which keeps one `BR` + `BGR`
+  in flight and sends only the latest value). It is live in a Control run; the hub refuses
+  it during a Lift move (the `BGR` read back is the check), so the dial is disabled then,
+  and in a run the remote started (its pot sets that speed).
 - In the app (`main/settings.ts` → `userData/settings.json`, `state/controlHub.ts`): the
-  lift distance, also on Config → ControlHub; and the comms config.
+  lift distance and the dial's max speed (`dialRpmMax`), also on Config → ControlHub; and
+  the comms config.
 - In the renderer's localStorage (`state/display.ts`): display preferences.
 
 ### Telemetry rendering

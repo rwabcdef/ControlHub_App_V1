@@ -37,14 +37,17 @@ const sameGain = (a: number, b: number): boolean => Math.round(a * CTRL_GAIN_SCA
  * Config -> ControlHub. The controller settings live on the hub (CTRL0: BI
  * gain, BM max duty, BR target speed - read on connecting, sent on Save) and
  * apply to Control runs and lift moves alike; none of them starts anything.
- * The lift distance is kept by the app, and used by the dashboard's lift
- * buttons.
+ * The dial's max speed and the lift distance are kept by the app, for the
+ * dashboard's speed dial and lift buttons.
  */
 export function ControlHubConfigPage(): React.JSX.Element {
   return (
     <Stack spacing={2}>
       <ControllerPanel />
-      <LiftPanel />
+      <AppSettingPanel title="Speed dial" field="dialRpmMax" label="Dial max speed" max={CTRL_RPM_MAX}
+        help="RPM - the top of the dashboard's speed dial" />
+      <AppSettingPanel title="Lift" field="liftDistance" label="Target distance" max={LIFT_DISTANCE_MAX}
+        help="tacho edges (2 per revolution)" />
     </Stack>
   )
 }
@@ -65,7 +68,7 @@ function ControllerPanel(): React.JSX.Element {
 
   const gain = parseGain(gainText)
   const duty = parseWhole(dutyText, CTRL_DUTY_MIN, CTRL_DUTY_MAX)
-  const rpmValue = parseWhole(rpmText, 1, CTRL_RPM_MAX)
+  const rpmValue = parseWhole(rpmText, 0, CTRL_RPM_MAX)
   const gainInvalid = gainText.trim() !== '' && gain === null
   const dutyInvalid = dutyText.trim() !== '' && duty === null
   const rpmInvalid = rpmText.trim() !== '' && rpmValue === null
@@ -124,14 +127,15 @@ function ControllerPanel(): React.JSX.Element {
                 <TextField fullWidth label="Target speed" size="small" type="number" value={rpmText}
                   disabled={!connected || loading}
                   onChange={(e) => setRpmText(e.target.value)} onKeyDown={onKeyDown}
-                  error={rpmInvalid} helperText={rpmInvalid ? `1 to ${CTRL_RPM_MAX}` : 'RPM'}
-                  slotProps={{ htmlInput: { min: 1, max: CTRL_RPM_MAX, step: 1 } }} />
+                  error={rpmInvalid} helperText={rpmInvalid ? `0 to ${CTRL_RPM_MAX}` : 'RPM'}
+                  slotProps={{ htmlInput: { min: 0, max: CTRL_RPM_MAX, step: 1 } }} />
               </Grid>
             </Grid>
 
             <Typography variant="caption" color="text.secondary">
-              Applied at once, also to a run in progress. A run started from the remote hub takes its
-              speed from the remote's pot instead.
+              Gain and max duty apply at once, also to a run in progress. The target speed is live in a
+              Control run (the dashboard's dial sets it too) but fixed during a lift move - the hub refuses
+              it then. A run started from the remote hub takes its speed from the remote's pot instead.
             </Typography>
 
             <div>
@@ -159,31 +163,39 @@ function ControllerPanel(): React.JSX.Element {
   )
 }
 
-function LiftPanel(): React.JSX.Element {
-  const { liftDistance, save } = useControlHub()
-  const [text, setText] = useState(String(liftDistance))
+/** One whole-number setting kept by the app (settings.json), saved on leaving the box or Enter. */
+function AppSettingPanel({ title, field, label, max, help }: {
+  title: string
+  field: 'liftDistance' | 'dialRpmMax'
+  label: string
+  max: number
+  help: string
+}): React.JSX.Element {
+  const current = useControlHub((s) => s[field])
+  const save = useControlHub((s) => s.save)
+  const [text, setText] = useState(String(current))
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => setText(String(liftDistance)), [liftDistance])
+  useEffect(() => setText(String(current)), [current])
 
-  const value = parseWhole(text, 1, LIFT_DISTANCE_MAX)
+  const value = parseWhole(text, 1, max)
   const invalid = value === null
 
   const onSave = (): void => {
-    if (value === null || value === liftDistance) return
+    if (value === null || value === current) return
     setError(null)
-    save({ liftDistance: value }).catch((e) => setError(errorMessage(e)))
+    save({ [field]: value }).catch((e) => setError(errorMessage(e)))
   }
 
   return (
-    <Panel title="Lift">
+    <Panel title={title}>
       <Stack spacing={2}>
-        <TextField label="Target distance" size="small" type="number" value={text} sx={{ maxWidth: 300 }}
+        <TextField label={label} size="small" type="number" value={text} sx={{ maxWidth: 300 }}
           onChange={(e) => setText(e.target.value)} onBlur={onSave}
           onKeyDown={(e) => e.key === 'Enter' && onSave()}
           error={invalid}
-          helperText={invalid ? `1 to ${LIFT_DISTANCE_MAX}` : 'tacho edges (2 per revolution) - saved on leaving the box'}
-          slotProps={{ htmlInput: { min: 1, max: LIFT_DISTANCE_MAX, step: 1 } }} />
+          helperText={invalid ? `1 to ${max}` : `${help} - saved on leaving the box`}
+          slotProps={{ htmlInput: { min: 1, max, step: 1 } }} />
         {error && <Alert severity="error" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
       </Stack>
     </Panel>

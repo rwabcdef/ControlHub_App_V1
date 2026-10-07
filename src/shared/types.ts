@@ -33,9 +33,10 @@ export interface CtrlSettings {
   /** Integral gain, 0..CTRL_GAIN_MAX in steps of 1e-6 (BI002000 = 0.002) */
   gainI: number
   /**
-   * Target speed, RPM (BR0120 = 120). Does not start anything: it is the
-   * speed of the next Control run or lift move, and of one in progress
-   * (bar a run started from the remote hub, whose pot sets its speed).
+   * Target speed, RPM, 0..CTRL_RPM_MAX (BR0120 = 120). Does not start
+   * anything: it is the speed of the next Control run or lift move, and live
+   * in a Control run in progress (bar a run started from the remote hub,
+   * whose pot sets its speed). The hub refuses it during a lift move.
    */
   rpm: number
   /** Max duty cycle, %, CTRL_DUTY_MIN..CTRL_DUTY_MAX (BM050 = 50) */
@@ -136,10 +137,13 @@ export interface SerialPortInfo {
 export interface ControlHubSettings {
   /** Lift move distance, edges (1..LIFT_DISTANCE_MAX) */
   liftDistance: number
+  /** Top of the dashboard's speed dial, RPM (1..CTRL_RPM_MAX) */
+  dialRpmMax: number
 }
 
 export const DEFAULT_CONTROL_HUB_SETTINGS: ControlHubSettings = {
-  liftDistance: 100
+  liftDistance: 100,
+  dialRpmMax: 300
 }
 
 /** One line of MQTT traffic, for the MQTT log page */
