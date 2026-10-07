@@ -37,7 +37,7 @@ const HUB_MODES: Record<string, HubMode> = { I: 'idle', C: 'control', L: 'lift' 
  * Data of the hub's CTRL0 status frame, e.g. CF030.0350.1234 from
  * CTRL0U001015CF030.0350.1234:
  *   <mode I|C|L><direction F|R><duty %:3>.<measured rpm:4>.<current mA:4>
- * Sent on MQTT every 500 ms while the hub runs (Control or Lift), and once
+ * Sent on MQTT every 250 ms while the hub runs (Control or Lift), and once
  * when it goes idle. The sample's current is in A.
  */
 export function parseCtrlStatus(data: string): { sample: RawSample; hub: HubState } | null {

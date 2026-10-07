@@ -7,6 +7,7 @@ import { getSettings, updateSettings } from '../settings'
 import { MqttTransport } from './mqtt'
 import { listSerialPorts, SerialTransport } from './serial'
 import { SimTransport } from './simulator'
+import { StatusThinner } from './statusThinner'
 import { Transport, TransportEvents } from './transport'
 
 /** Samples are batched and pushed to the renderer at roughly display rate. */
@@ -52,6 +53,9 @@ class CommsHub {
     let transport: Transport | null = null
     // Ignore late events from a transport that has since been replaced.
     const live = (): boolean => this.transport === transport
+    // The logs keep 1 status frame in 10 while running (telemetry gets them all).
+    const logThinner = new StatusThinner()
+    const traceThinner = new StatusThinner()
     const ev: TransportEvents = {
       sample: (s) => {
         if (!live()) return
@@ -65,7 +69,7 @@ class CommsHub {
         if (live() && this.target && !this.target.isDestroyed()) this.target.send(IPC.hubState, s)
       },
       mqttLog: (line) => {
-        if (!live()) return
+        if (!live() || !logThinner.keep(line.line)) return
         this.pendingLog.push(line)
         if (this.pendingLog.length > MAX_PENDING_LOG) {
           this.pendingLog.splice(0, this.pendingLog.length - MAX_PENDING_LOG)
@@ -73,7 +77,7 @@ class CommsHub {
       },
       trace: SERLINK_TRACE
         ? (msg): void => {
-            if (!live()) return
+            if (!live() || !traceThinner.keep(msg)) return
             const line = `${new Date().toISOString().slice(11, 23)} ${cfg.kind} ${msg}`
             console.log(`[SerLink] ${line}`)
             if (this.target && !this.target.isDestroyed()) this.target.send(IPC.serlinkTrace, line)

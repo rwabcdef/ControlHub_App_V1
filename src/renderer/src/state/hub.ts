@@ -8,7 +8,7 @@ interface HubStore {
 
 /**
  * The hub's state (HubApp in the firmware): idle, a Control run or a lift
- * move. Low rate - a status frame every 500 ms while running - so React
+ * move. Low rate - a status frame every 250 ms while running - so React
  * state is fine here.
  */
 export const useHub = create<HubStore>(() => ({ hub: null }))

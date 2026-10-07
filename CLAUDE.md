@@ -113,6 +113,10 @@ broker, see the hub README's Norton firewall note.
   packaged ones, `comms/hub.ts`), every SerLink frame is logged to the main-process
   console and pushed to the renderer on `IPC.serlinkTrace`, which `state/comms.ts`
   prints to the DevTools console.
+- Both logs keep only **1 in 10** of the hub's CTRL0 status frames while it runs (they
+  come every 250 ms), plus the Idle status frame sent when a run stops; everything else
+  is logged in full. `comms/statusThinner.ts`, one per log, applied in `comms/hub.ts`.
+  Telemetry still gets every frame.
 
 ### Settings
 
