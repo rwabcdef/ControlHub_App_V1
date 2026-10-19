@@ -34,18 +34,21 @@ export function parseLine(raw: string): RawSample | null {
 const HUB_MODES: Record<string, HubMode> = { I: 'idle', C: 'control', L: 'lift' }
 
 /**
- * Data of the hub's CTRL0 status frame, e.g. CF030.0350.1234 from
- * CTRL0U001015CF030.0350.1234:
- *   <mode I|C|L><direction F|R><duty %:3>.<measured rpm:4>.<current mA:4>
+ * Data of the hub's CTRL0 status frame, e.g. CF030.0350.1234.0150 from
+ * CTRL0U001020CF030.0350.1234.0150:
+ *   <mode I|C|L><direction F|R><duty %:3>.<measured rpm:4>.<current mA:4>.<run target rpm:4>
  * Sent on MQTT every 250 ms while the hub runs (Control or Lift), and once
- * when it goes idle. The sample's current is in A.
+ * when it goes idle. The sample's current is in A. The run target (the
+ * remote's pot in a remote run) is missing from older firmware's frames.
  */
 export function parseCtrlStatus(data: string): { sample: RawSample; hub: HubState } | null {
-  const m = /^([ICL])([FR])(\d{3})\.(\d{4})\.(\d{4})$/.exec(data)
+  const m = /^([ICL])([FR])(\d{3})\.(\d{4})\.(\d{4})(?:\.(\d{4}))?$/.exec(data)
   if (!m) return null
+  const hub: HubState = { mode: HUB_MODES[m[1]], direction: m[2] === 'R' ? 'reverse' : 'forward' }
+  if (m[6] !== undefined) hub.runRpm = Number(m[6])
   return {
     sample: { duty: Number(m[3]), rpm: Number(m[4]), current: Number(m[5]) / 1000 },
-    hub: { mode: HUB_MODES[m[1]], direction: m[2] === 'R' ? 'reverse' : 'forward' }
+    hub
   }
 }
 

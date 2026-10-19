@@ -82,8 +82,8 @@ subscription in preload.
   lines.
 
 **Frame formats are a contract with the firmware.** A change to what a hub socket sends
-or accepts (e.g. the CTRL0 status frame `CTRL0U001015CF030.0350.1234` - mode, direction,
-duty %, RPM, current mA - the `BGA`/`BGM`/`BGO` answers, the LIFT0 status) must change
+or accepts (e.g. the CTRL0 status frame `CTRL0U001020CF030.0350.1234.0150` - mode, direction,
+duty %, RPM, current mA, run target RPM (the pot's in a remote run) - the `BGA`/`BGM`/`BGO` answers, the LIFT0 status) must change
 `parser.ts` / `hubLink.ts` and the firmware together. Field limits mirror the firmware's
 digit widths and ranges (`CTRL_RPM_MAX` 9999, `CTRL_GAIN_SCALE` 1e6, `CTRL_DUTY_MIN`/`MAX`
 20..100, `LIFT_DISTANCE_MAX` 999999 in `shared/types.ts`). The status frame's current is

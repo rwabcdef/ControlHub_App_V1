@@ -104,6 +104,8 @@ export class HubLink {
     if (!hubMode) throw new Error(`${CTRL_PROTOCOL}: unexpected BGO reply "${mode ?? ''}"`)
 
     const hub: HubState = { ...hubMode, direction: dir === 'R' ? 'reverse' : 'forward' }
+    // Only the status frame carries the run's target - keep it through the same run.
+    if (this.hub?.mode === hub.mode && this.hub.runRpm !== undefined) hub.runRpm = this.hub.runRpm
     this.hub = hub
     this.ev.hub(hub)
     return {

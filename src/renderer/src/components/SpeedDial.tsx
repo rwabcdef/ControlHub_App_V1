@@ -10,6 +10,8 @@ interface SpeedDialProps {
   unit: string
   color: string
   disabled?: boolean
+  /** A meter: shows `value` in full colour, but can't be turned */
+  readOnly?: boolean
   /** Called as the dial turns, with whole numbers in min..max */
   onChange: (value: number) => void
   /** A new object here (a failed set) drops the dial's own value and shows `value` again */
@@ -43,15 +45,20 @@ const fmtTick = (v: number): string => (Math.abs(v) >= 1000 ? `${+(v / 1000).toF
  * arrow keys (PageUp / PageDown for 10). While it is being turned it shows
  * its own value; once the hub's value catches up (or a set fails) it shows
  * the hub's again, so it never claims a speed the hub did not take.
+ * Read-only, it is a meter of `value` - drawn as normal, but inert.
  */
 export function SpeedDial(props: SpeedDialProps): React.JSX.Element {
-  const { value, min = 0, max, label, unit, color, disabled = false, onChange, error, majorTicks = 6 } = props
+  const { value, min = 0, max, label, unit, color, onChange, error, majorTicks = 6 } = props
+  const readOnly = props.readOnly ?? false
+  // Takes no input: greyed out, or a meter
+  const inert = (props.disabled ?? false) || readOnly
+  const disabled = (props.disabled ?? false) && !readOnly
   const theme = useTheme()
   const svgRef = useRef<SVGSVGElement>(null)
   const dragging = useRef(false)
   const [local, setLocal] = useState<number | null>(null)
 
-  // Hand back to the hub's value once it agrees, the set failed, or the dial is disabled.
+  // Hand back to the hub's value once it agrees, the set failed, or the dial stops taking input.
   useEffect(() => {
     if (!dragging.current && local !== null && value === local) setLocal(null)
   }, [value, local])
@@ -59,11 +66,11 @@ export function SpeedDial(props: SpeedDialProps): React.JSX.Element {
     if (error) setLocal(null)
   }, [error])
   useEffect(() => {
-    if (disabled) {
+    if (inert) {
       dragging.current = false
       setLocal(null)
     }
-  }, [disabled])
+  }, [inert])
 
   const shown = local ?? value
   const clamp = (v: number): number => Math.min(max, Math.max(min, Math.round(v)))
@@ -100,7 +107,7 @@ export function SpeedDial(props: SpeedDialProps): React.JSX.Element {
   }
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>): void => {
-    if (disabled || e.button !== 0) return
+    if (inert || e.button !== 0) return
     e.currentTarget.focus()
     // Only a press on the scale itself sets a value - a click on the readout
     // or the centre, or in the gap, must not step a running motor to an end.
@@ -129,7 +136,7 @@ export function SpeedDial(props: SpeedDialProps): React.JSX.Element {
     set(cur + d)
   }
   const onKeyDown = (e: React.KeyboardEvent): void => {
-    if (disabled) return
+    if (inert) return
     const d = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[e.key]
     if (d !== undefined) step(d)
     else if (e.key === 'Home') set(min)
@@ -141,7 +148,7 @@ export function SpeedDial(props: SpeedDialProps): React.JSX.Element {
   // A native listener: React's onWheel is passive, so it can't stop the page scrolling.
   const wheel = useRef<(e: WheelEvent) => void>(() => {})
   wheel.current = (e) => {
-    if (disabled || e.deltaY === 0) return
+    if (inert || e.deltaY === 0) return
     e.preventDefault()
     step(e.deltaY < 0 ? 1 : -1)
   }
@@ -188,10 +195,10 @@ export function SpeedDial(props: SpeedDialProps): React.JSX.Element {
     <svg ref={svgRef} viewBox={`${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}`} width="100%" height="100%"
       role="slider" aria-label={label} aria-valuemin={min} aria-valuemax={max}
       aria-valuenow={shown ?? undefined} aria-valuetext={shown === null ? 'unknown' : `${shown} ${unit}`}
-      aria-disabled={disabled} tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled} aria-readonly={readOnly} tabIndex={inert ? -1 : 0}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag}
       onPointerCancel={endDrag} onKeyDown={onKeyDown}
-      style={{ cursor: disabled ? 'default' : 'pointer', touchAction: 'none', outline: 'none', userSelect: 'none' }}>
+      style={{ cursor: inert ? 'default' : 'pointer', touchAction: 'none', outline: 'none', userSelect: 'none' }}>
       <path d={arc(R + 6, START, START + SWEEP)} stroke={theme.palette.action.hover} strokeWidth={6} fill="none" />
       <path d={arc(R + 6, START, START + SWEEP)} stroke={ink} strokeWidth={6} fill="none"
         pathLength={1000} strokeDasharray={`${f * 1000} 1000`} />

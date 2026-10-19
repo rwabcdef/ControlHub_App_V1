@@ -76,6 +76,12 @@ export interface HubState {
   direction: CtrlDirection
   /** Unknown (undefined) until read with BGO */
   source?: HubSource
+  /**
+   * The run's target speed, RPM, from the status frame: the remote's pot in
+   * a run the remote started, else the target (BR). Undefined until the
+   * first status frame, or from firmware that doesn't send it.
+   */
+  runRpm?: number
 }
 
 /** The hub's SerLink sockets the app can send raw data to */

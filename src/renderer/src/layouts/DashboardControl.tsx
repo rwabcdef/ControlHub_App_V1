@@ -44,7 +44,8 @@ type Busy = 'start' | 'stop' | 'direction' | 'up' | 'down' | 'move' | null
  * from here or from the remote hub. The dial sets the target speed (0 to
  * Config -> ControlHub's dial max): live in a run started here, the next
  * run's while Idle. It is disabled during a lift move (the hub fixes a
- * move's speed) and during a run the remote started (its pot sets that).
+ * move's speed). During a run the remote started, its pot sets the speed, so
+ * the dial becomes a read-only meter of that run's target (from the status frame).
  * Lift: Up/Down moves the lift up by the configured distance, or down to its
  * ground sensor (the distance + 20% at most); For/Rev moves it the distance
  * in the direction chosen. The hub reports the move's end (Done).
@@ -69,13 +70,14 @@ export function DashboardControl({ sx }: { sx?: SxProps<Theme> }): React.JSX.Ele
       : !idle ? 'The hub is running - stop it first' : ''
   // Lift::start() on the hub refuses a zero target, silently.
   const liftBlocked = blocked || (ctrl.rpm === 0 ? 'The target speed is 0 - turn the dial up first' : '')
+  // A run the remote started: the dial is a meter of its target (the pot's)
+  const remoteRun = connected && hub?.mode === 'control' && hub.source === 'remote'
   // Why the dial is disabled, if it is
   const dialBlocked = !connected ? 'Connect first'
     : !hub || ctrl.rpm === null ? 'Waiting for the hub'
       : hub.mode === 'lift' ? 'The speed is fixed during a lift move'
-        : hub.mode === 'control' && hub.source === 'remote' ? "The remote's pot sets this run's speed"
-          // Until BGO says who started the run, it may be the remote's
-          : hub.mode === 'control' && !hub.source ? 'Waiting for the hub' : ''
+        // Until BGO says who started the run, it may be the remote's
+        : hub.mode === 'control' && !hub.source ? 'Waiting for the hub' : ''
 
   const run = (which: NonNullable<Busy>, send: () => Promise<void>): void => {
     if (busy) return
@@ -109,13 +111,14 @@ export function DashboardControl({ sx }: { sx?: SxProps<Theme> }): React.JSX.Ele
           {DIRECTIONS.map((d) => <MenuItem key={d.value} value={d.value}>{d.label}</MenuItem>)}
         </TextField>
         {button('start', 'Start', <PlayArrowIcon />, ctrl.start)}
-        <Tooltip title={dialBlocked} placement="right">
+        <Tooltip title={remoteRun ? "The remote's pot sets this run's speed" : dialBlocked} placement="right">
           <Box sx={{ height: 130 }}>
-            <SpeedDial value={ctrl.rpm} max={dialRpmMax} label="Target" unit="RPM" color={SERIES_COLORS.rpm}
-              disabled={!!dialBlocked} onChange={ctrl.setRpmLive} error={ctrl.rpmError} />
+            <SpeedDial value={remoteRun ? (hub.runRpm ?? null) : ctrl.rpm} max={dialRpmMax} label="Target" unit="RPM"
+              color={SERIES_COLORS.rpm} disabled={!remoteRun && !!dialBlocked} readOnly={remoteRun}
+              onChange={ctrl.setRpmLive} error={ctrl.rpmError} />
           </Box>
         </Tooltip>
-        {ctrl.rpmError && !dialBlocked && (
+        {ctrl.rpmError && !dialBlocked && !remoteRun && (
           <Typography variant="caption" color="error" sx={{ textAlign: 'center', mt: '4px !important' }}>
             {ctrl.rpmError.message}
           </Typography>
