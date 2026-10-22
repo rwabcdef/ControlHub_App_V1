@@ -5,6 +5,7 @@ import TuneIcon from '@mui/icons-material/Tune'
 import FolderIcon from '@mui/icons-material/Folder'
 import BuildIcon from '@mui/icons-material/Build'
 import ListAltIcon from '@mui/icons-material/ListAlt'
+import SettingsInputComponentIcon from '@mui/icons-material/SettingsInputComponent'
 import ViewSidebarIcon from '@mui/icons-material/ViewSidebar'
 import VerticalSplitIcon from '@mui/icons-material/VerticalSplit'
 import { useComms } from '../state/comms'
@@ -15,6 +16,7 @@ import { StatusFooter } from './StatusFooter'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: <SpeedIcon fontSize="small" /> },
+  { to: '/direct', label: 'Direct', icon: <SettingsInputComponentIcon fontSize="small" /> },
   { to: '/config', label: 'Config', icon: <TuneIcon fontSize="small" /> },
   { to: '/log', label: 'MQTT log', icon: <ListAltIcon fontSize="small" /> },
   { to: '/files', label: 'Files', icon: <FolderIcon fontSize="small" /> },

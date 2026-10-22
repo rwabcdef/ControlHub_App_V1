@@ -11,6 +11,11 @@ import {
   HubState,
   LIFT_DISTANCE_MAX,
   LiftDirection,
+  MOTOR_DUTY_MAX,
+  MOTORS_FITTED,
+  MotorDirection,
+  MotorId,
+  MotorReadback,
   PingReport
 } from '@shared/types'
 import { parseCtrlStatus, parseHubMode, parseLiftStatus, parseLine } from './parser'
@@ -20,6 +25,11 @@ import { TransportEvents } from './transport'
 
 /** The hub's speed controller socket: status frames in, controller commands out. */
 export const CTRL_PROTOCOL = 'CTRL0'
+/**
+ * The hub's direct motor socket: open loop duty and bridge direction, for
+ * the Direct page. On both the hub's links (uart2 and MQTT).
+ */
+export const MOTOR_PROTOCOL = 'MOTOR'
 /** The hub's lift socket - only on its MQTT link (SerLink2) */
 export const LIFT_PROTOCOL = 'LIFT0'
 /** The only lift on the remote hub */
@@ -38,6 +48,8 @@ export interface HubLinkOptions {
 export class HubLink {
   readonly serLink: SerLink
   readonly ctrl: Socket
+  /** Sends only - the hub never sends MOTOR frames unasked */
+  readonly motor: Socket
   readonly lift: Socket | null
   /** The hub's state as last reported, to spot a change of mode */
   private hub: HubState | null = null
@@ -55,6 +67,7 @@ export class HubLink {
       this.ev.sample(s.sample)
       this.onHubStatus(s.hub)
     })
+    this.motor = this.serLink.acquireSocket(MOTOR_PROTOCOL)
     this.lift = opts.lift
       ? this.serLink.acquireSocket(LIFT_PROTOCOL, (frame) => {
           const s = parseLiftStatus(frame.data)
@@ -188,6 +201,58 @@ export class HubLink {
   }
 
   /**
+   * Read a motor's duty and bridge direction:
+   *   BGP -> 030   duty %, 3 digits
+   *   BGD -> F     direction, F / R / D (disabled: both IN pins low)
+   */
+  async motorGet(id: MotorId): Promise<MotorReadback> {
+    checkMotorId(id)
+    const duty = await this.sendMotor(`${id}GP`)
+    if (!/^\d{3}$/.test(duty ?? '')) throw new Error(`${MOTOR_PROTOCOL}: unexpected ${id}GP reply "${duty ?? ''}"`)
+    const dir = await this.sendMotor(`${id}GD`)
+    const direction = MOTOR_DIRECTION_FROM_CHAR[dir ?? '']
+    if (!direction) throw new Error(`${MOTOR_PROTOCOL}: unexpected ${id}GD reply "${dir ?? ''}"`)
+    return { duty: Number(duty), direction }
+  }
+
+  /**
+   * Set a motor's duty, open loop: MOTOR BP030. The hub refuses it unless
+   * idle (it lets go of the speed controller first), silently - so it is
+   * read back (BGP), and rejects if the hub kept another value. Resolves
+   * with the duty the hub now holds.
+   */
+  async motorSetDuty(id: MotorId, duty: number): Promise<number> {
+    checkMotorId(id)
+    if (!Number.isInteger(duty) || duty < 0 || duty > MOTOR_DUTY_MAX) {
+      throw new Error(`Duty must be a whole number from 0 to ${MOTOR_DUTY_MAX}`)
+    }
+    await this.sendMotor(`${id}P${String(duty).padStart(3, '0')}`)
+    const back = await this.sendMotor(`${id}GP`)
+    if (!/^\d{3}$/.test(back ?? '')) throw new Error(`${MOTOR_PROTOCOL}: unexpected ${id}GP reply "${back ?? ''}"`)
+    if (Number(back) !== duty) {
+      throw new Error(`The hub kept ${Number(back)}%, not ${duty}% (refused unless idle)`)
+    }
+    return duty
+  }
+
+  /**
+   * Set a motor's bridge direction: MOTOR BDF / BDR / BDD. Refused unless
+   * idle, like the duty, so read back (BGD) the same way.
+   */
+  async motorSetDirection(id: MotorId, direction: MotorDirection): Promise<MotorDirection> {
+    checkMotorId(id)
+    // Checked here too, not just typed: it arrives from the renderer over IPC.
+    const c = MOTOR_DIRECTION_TO_CHAR[direction]
+    if (!c) throw new Error(`Direction must be forward, reverse or disabled, not "${String(direction)}"`)
+    await this.sendMotor(`${id}D${c}`)
+    const back = await this.sendMotor(`${id}GD`)
+    const kept = MOTOR_DIRECTION_FROM_CHAR[back ?? '']
+    if (!kept) throw new Error(`${MOTOR_PROTOCOL}: unexpected ${id}GD reply "${back ?? ''}"`)
+    if (kept !== direction) throw new Error(`The hub kept ${kept}, not ${direction} (refused unless idle)`)
+    return direction
+  }
+
+  /**
    * Start the lift for `distance` edges in `direction`, e.g.
    * LIFT0U645006BSF234 (forward) or LIFT0U645006BSR234 (reverse). Sent as
    * 'U', so this only confirms the frame was published; the hub reports the
@@ -276,10 +341,27 @@ export class HubLink {
     }
   }
 
+  /** Send MOTOR data in a 'T' frame; resolves with any data on the ack. */
+  private async sendMotor(data: string): Promise<string | undefined> {
+    return checkResult(MOTOR_PROTOCOL, await this.motor.sendData(data, true))
+  }
+
   /** Send CTRL0 data in a 'T' frame; resolves with any data on the ack. */
   private async sendCtrl(data: string): Promise<string | undefined> {
     return checkResult(CTRL_PROTOCOL, await this.ctrl.sendData(data, true))
   }
+}
+
+const MOTOR_DIRECTION_FROM_CHAR: Record<string, MotorDirection | undefined> = {
+  F: 'forward', R: 'reverse', D: 'disabled'
+}
+const MOTOR_DIRECTION_TO_CHAR: Record<string, string | undefined> = {
+  forward: 'F', reverse: 'R', disabled: 'D'
+}
+
+/** Only a fitted channel - the hub sends A to motorB until motorA exists. Untrusted input from the renderer. */
+function checkMotorId(id: MotorId): void {
+  if (!MOTORS_FITTED.includes(id)) throw new Error(`Motor ${String(id)} is not fitted`)
 }
 
 /** Gain as the hub's integer millionths; throws unless 0..CTRL_GAIN_MAX with at most 6 decimals. */

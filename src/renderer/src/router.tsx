@@ -6,6 +6,7 @@ import { CommsConfigPage } from './pages/config/CommsConfigPage'
 import { ControlHubConfigPage } from './pages/config/ControlHubConfigPage'
 import { DisplayConfigPage } from './pages/config/DisplayConfigPage'
 import { DevPage } from './pages/DevPage'
+import { DirectPage } from './pages/DirectPage'
 import { FilesPage } from './pages/FilesPage'
 import { LogPage } from './pages/LogPage'
 
@@ -26,6 +27,7 @@ export const router = createHashRouter([
           { path: 'display', element: <DisplayConfigPage /> }
         ]
       },
+      { path: 'direct', element: <DirectPage /> },
       { path: 'log', element: <LogPage /> },
       { path: 'files', element: <FilesPage /> },
       { path: 'dev', element: <DevPage /> },

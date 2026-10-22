@@ -11,6 +11,9 @@ import type {
   HubState,
   LiftDirection,
   LiftStatus,
+  MotorDirection,
+  MotorId,
+  MotorReadback,
   MotorSample,
   MqttLogLine,
   PingReport,
@@ -59,6 +62,16 @@ const api = {
     stop: (): Promise<void> => ipcRenderer.invoke(IPC.ctrlStop),
     /** Select the direction (BDF / BDR) - the hub ignores it unless idle */
     setDirection: (direction: CtrlDirection): Promise<void> => ipcRenderer.invoke(IPC.ctrlSetDirection, direction)
+  },
+
+  motor: {
+    /** Read a motor's duty and bridge direction (MOTOR GP, GD) */
+    get: (id: MotorId): Promise<MotorReadback> => ipcRenderer.invoke(IPC.motorGet, id),
+    /** Set a motor's duty, open loop (MOTOR P); rejects if the hub keeps another value (it takes it only while idle) */
+    setDuty: (id: MotorId, duty: number): Promise<number> => ipcRenderer.invoke(IPC.motorSetDuty, id, duty),
+    /** Set a motor's bridge direction (MOTOR D); rejects if the hub keeps another (it takes it only while idle) */
+    setDirection: (id: MotorId, direction: MotorDirection): Promise<MotorDirection> =>
+      ipcRenderer.invoke(IPC.motorSetDirection, id, direction)
   },
 
   hub: {

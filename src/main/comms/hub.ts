@@ -1,7 +1,7 @@
 import { app, ipcMain, WebContents } from 'electron'
 import {
   CommsConfig, CommsState, ControlHubSettings, CTRL_RPM_MAX, CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, IPC,
-  LIFT_DISTANCE_MAX, LiftDirection, MotorSample, MqttLogLine, PingReport
+  LIFT_DISTANCE_MAX, LiftDirection, MotorDirection, MotorId, MotorReadback, MotorSample, MqttLogLine, PingReport
 } from '@shared/types'
 import { getSettings, updateSettings } from '../settings'
 import { MqttTransport } from './mqtt'
@@ -163,6 +163,24 @@ class CommsHub {
     await this.transport.ctrlSetDirection(direction)
   }
 
+  async motorGet(id: MotorId): Promise<MotorReadback> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.motorGet) throw new Error('Direct motor control needs a serial or MQTT connection')
+    return this.transport.motorGet(id)
+  }
+
+  async motorSetDuty(id: MotorId, duty: number): Promise<number> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.motorSetDuty) throw new Error('Direct motor control needs a serial or MQTT connection')
+    return this.transport.motorSetDuty(id, duty)
+  }
+
+  async motorSetDirection(id: MotorId, direction: MotorDirection): Promise<MotorDirection> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.motorSetDirection) throw new Error('Direct motor control needs a serial or MQTT connection')
+    return this.transport.motorSetDirection(id, direction)
+  }
+
   async liftStart(distance: number, direction: LiftDirection): Promise<void> {
     if (!this.transport) throw new Error('Not connected')
     if (!this.transport.liftStart) throw new Error('Lift control needs an MQTT connection')
@@ -231,6 +249,12 @@ export function registerCommsIpc(): void {
   ipcMain.handle(IPC.ctrlStop, () => commsHub.ctrlStop())
   // direction is validated in HubLink.ctrlSetDirection() - it is untrusted input from the renderer
   ipcMain.handle(IPC.ctrlSetDirection, (_e, direction: CtrlDirection) => commsHub.ctrlSetDirection(direction))
+  // id and direction are validated in HubLink - they are untrusted input from the renderer
+  ipcMain.handle(IPC.motorGet, (_e, id: MotorId) => commsHub.motorGet(id))
+  ipcMain.handle(IPC.motorSetDuty, (_e, id: MotorId, duty: number) => commsHub.motorSetDuty(id, Number(duty)))
+  ipcMain.handle(IPC.motorSetDirection, (_e, id: MotorId, direction: MotorDirection) =>
+    commsHub.motorSetDirection(id, direction)
+  )
   ipcMain.handle(IPC.controlHubGet, () => getSettings().controlHub)
   ipcMain.handle(IPC.controlHubSet, (_e, s: Partial<ControlHubSettings>) => {
     // Untrusted input from the renderer: check each field given, keep the rest.

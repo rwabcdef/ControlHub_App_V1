@@ -70,7 +70,8 @@ subscription in preload.
   transport are ignored (`live()`).
 - `comms/hubLink.ts` (`HubLink`) is the hub's SerLink sockets over any line-oriented link:
   `CTRL0` (status frames in → telemetry samples + hub state; controller settings and
-  Control run commands `BS`/`BX`/`BD` out) and `LIFT0` (MQTT only). Both the serial and
+  Control run commands `BS`/`BX`/`BD` out), `MOTOR` (the Direct page, below) and
+  `LIFT0` (MQTT only). Both the serial and
   MQTT transports use it. When a status frame shows a new run, it reads who started it
   with `BGO`.
 - `comms/serlink/` is a TypeScript port of SerLink (`Frame.ts`, `SerLink.ts`) that
@@ -130,6 +131,18 @@ broker, see the hub README's Norton firewall note.
   lift distance and the dial's max speed (`dialRpmMax`), also on Config → ControlHub; and
   the comms config.
 - In the renderer's localStorage (`state/display.ts`): display preferences.
+
+### Direct page
+
+`pages/DirectPage.tsx` (nav "Direct", `state/direct.ts`) drives the hub's motors open
+loop through its `MOTOR` socket, with a duty dial and a Forward/Reverse switch per
+motor (`<id>P<ddd>`, `<id>D<F|R|D>`, each read back with `<id>GP` / `<id>GD`). The hub
+takes them only while Idle, and silently refuses them otherwise, so the read back is the
+check. Pressing the selected direction again sends `D` (coast). A run or lift move
+leaves the bridge at 0% with no direction, so the store reads it again whenever the hub
+returns to Idle. Only the motors in `MOTORS_FITTED` (`shared/types.ts`, currently B) are
+live. The hub sends selector A to motorB until motorA exists, so A's section is drawn
+but disabled.
 
 ### Telemetry rendering
 

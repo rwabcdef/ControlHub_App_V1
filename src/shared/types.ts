@@ -59,6 +59,25 @@ export const CTRL_RPM_MAX = 9999
 export const CTRL_DUTY_MIN = 20
 export const CTRL_DUTY_MAX = 100
 
+/** A channel of the hub's TC78H611FNG bridge - the selector in MOTOR BP030 */
+export type MotorId = 'A' | 'B'
+/**
+ * The channels that are built. The hub sends selector A to motorB until
+ * motorA exists, so A stays out of this list (and its Direct page section
+ * disabled) until then.
+ */
+export const MOTORS_FITTED: readonly MotorId[] = ['B']
+/** A bridge direction - the F / R / D in MOTOR BDF / BDR / BDD; disabled = both IN pins low, the motor coasts */
+export type MotorDirection = 'forward' | 'reverse' | 'disabled'
+/** MOTOR <id>GP / <id>GD: what the bridge is driven at */
+export interface MotorReadback {
+  /** PWM duty cycle, %, 0..MOTOR_DUTY_MAX */
+  duty: number
+  direction: MotorDirection
+}
+/** MOTOR P takes 3 digits; the hub clamps above 100 */
+export const MOTOR_DUTY_MAX = 100
+
 /**
  * The hub's mode (HubApp in the firmware): idle, a Control run (the motor
  * held at the target speed until stopped) or a lift move.
@@ -202,6 +221,12 @@ export const IPC = {
   ctrlSetDirection: 'ctrl:setDirection',
   /** main -> renderer: HubState, from each CTRL0 status frame */
   hubState: 'hub:state',
+  /** Read a motor's duty and direction (MOTOR GP, GD) */
+  motorGet: 'motor:get',
+  /** Set a motor's duty, open loop (MOTOR P) - the hub takes it only while idle */
+  motorSetDuty: 'motor:setDuty',
+  /** Set a motor's bridge direction (MOTOR D) - the hub takes it only while idle */
+  motorSetDirection: 'motor:setDirection',
   /** main -> renderer: MqttLogLine[] batch */
   mqttLog: 'log:mqtt',
   controlHubGet: 'settings:getControlHub',

@@ -1,6 +1,6 @@
 import {
-  CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, HubState, LiftDirection, LiftStatus, MotorSample, MqttLogLine,
-  PingReport
+  CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, HubState, LiftDirection, LiftStatus, MotorDirection, MotorId,
+  MotorReadback, MotorSample, MqttLogLine, PingReport
 } from '@shared/types'
 
 /** A sample as decoded from the wire; `t` is optional (host time is used if absent). */
@@ -39,6 +39,10 @@ export interface Transport {
   ctrlStart?(): Promise<void>
   ctrlStop?(): Promise<void>
   ctrlSetDirection?(direction: CtrlDirection): Promise<void>
+  /** Read / set a motor's open loop duty and bridge direction (MOTOR GP, GD / P, D); only on links to the hub */
+  motorGet?(id: MotorId): Promise<MotorReadback>
+  motorSetDuty?(id: MotorId, duty: number): Promise<number>
+  motorSetDirection?(id: MotorId, direction: MotorDirection): Promise<MotorDirection>
   /** Start the lift for `distance` edges in `direction`; only on links that carry the LIFT0 socket */
   liftStart?(distance: number, direction: LiftDirection): Promise<void>
   /** Lower the lift to its ground sensor, `maxEdges` at most; only on links that carry the LIFT0 socket */

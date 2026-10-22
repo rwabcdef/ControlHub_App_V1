@@ -1,5 +1,5 @@
 import { connect, MqttClient } from 'mqtt'
-import { CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, LiftDirection, MqttConfig, PingReport } from '@shared/types'
+import { CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, MotorDirection, MotorId, MotorReadback, LiftDirection, MqttConfig, PingReport } from '@shared/types'
 import { HubLink } from './hubLink'
 import { Transport, TransportEvents } from './transport'
 
@@ -124,6 +124,21 @@ export class MqttTransport implements Transport {
   ctrlSetDirection(direction: CtrlDirection): Promise<void> {
     if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
     return this.link.ctrlSetDirection(direction)
+  }
+
+  motorGet(id: MotorId): Promise<MotorReadback> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.motorGet(id)
+  }
+
+  motorSetDuty(id: MotorId, duty: number): Promise<number> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.motorSetDuty(id, duty)
+  }
+
+  motorSetDirection(id: MotorId, direction: MotorDirection): Promise<MotorDirection> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.motorSetDirection(id, direction)
   }
 
   liftStart(distance: number, direction: LiftDirection): Promise<void> {
