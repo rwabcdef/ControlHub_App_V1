@@ -1,4 +1,5 @@
-import { Box, Grid, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
+import { Box, Button, Grid, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material'
+import StopIcon from '@mui/icons-material/Stop'
 import { MOTOR_DUTY_MAX, MOTORS_FITTED, type MotorDirection, type MotorId } from '@shared/types'
 import { Panel } from '../components/Panel'
 import { SpeedDial } from '../components/SpeedDial'
@@ -42,6 +43,7 @@ function MotorSection({ id }: { id: MotorId }): React.JSX.Element {
   const motor = useDirect((s) => s.motors[id])
   const setDutyLive = useDirect((s) => s.setDutyLive)
   const setDirection = useDirect((s) => s.setDirection)
+  const stop = useDirect((s) => s.stop)
 
   // Why the section is disabled, if it is
   const blocked = !MOTORS_FITTED.includes(id) ? `Motor ${id} is not fitted`
@@ -56,6 +58,8 @@ function MotorSection({ id }: { id: MotorId }): React.JSX.Element {
   const onDirection = (_e: React.MouseEvent, v: MotorDirection | null): void => {
     void setDirection(id, v ?? 'disabled')
   }
+  // Stop is live whenever a duty above 0 has been asked for, even before the hub has it.
+  const running = (motor.requested ?? 0) > 0 || (motor.duty ?? 0) > 0
 
   return (
     <Panel title={`Motor ${id}`} sx={{ height: '100%' }}>
@@ -69,9 +73,13 @@ function MotorSection({ id }: { id: MotorId }): React.JSX.Element {
           <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', mt: '4px !important' }}>
             {motor.direction === 'disabled' ? 'No direction - the motor coasts' : ' '}
           </Typography>
+          <Button fullWidth variant="contained" color="error" startIcon={<StopIcon />}
+            disabled={!!blocked || !running} onClick={() => stop(id)}>
+            Stop
+          </Button>
           <Box sx={{ height: 160 }}>
             <SpeedDial value={motor.duty} max={MOTOR_DUTY_MAX} label="Duty" unit="%" color={SERIES_COLORS.duty}
-              majorTicks={5} disabled={!!blocked} onChange={(v) => setDutyLive(id, v)} error={motor.dutyError} />
+              majorTicks={5} disabled={!!blocked} onChange={(v) => setDutyLive(id, v)} error={motor.dutyError ?? motor.dialReset} />
           </Box>
           {!blocked && (motor.dutyError || motor.error) && (
             <Typography variant="caption" color="error" sx={{ textAlign: 'center' }}>

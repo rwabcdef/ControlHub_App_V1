@@ -138,7 +138,9 @@ broker, see the hub README's Norton firewall note.
 loop through its `MOTOR` socket, with a duty dial and a Forward/Reverse switch per
 motor (`<id>P<ddd>`, `<id>D<F|R|D>`, each read back with `<id>GP` / `<id>GD`). The hub
 takes them only while Idle, and silently refuses them otherwise, so the read back is the
-check. Pressing the selected direction again sends `D` (coast). A run or lift move
+check. Pressing the selected direction again sends `D` (coast). Stop (enabled once a duty
+above 0 has been asked for) sends 0% through the same coalescing slot as the dial, so
+unsent dial values are dropped, and resets the dial's own value. A run or lift move
 leaves the bridge at 0% with no direction, so the store reads it again whenever the hub
 returns to Idle. Only the motors in `MOTORS_FITTED` (`shared/types.ts`, currently B) are
 live. The hub sends selector A to motorB until motorA exists, so A's section is drawn

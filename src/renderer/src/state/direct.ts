@@ -6,6 +6,11 @@ import { useHub } from './hub'
 export interface DirectMotor {
   /** What the hub holds, as last read (GP) or set; null until known */
   duty: number | null
+  /**
+   * The duty last asked for - the dial's latest value (or Stop's 0), ahead of
+   * the hub while a set is on its way; the hub's duty again after a read. Null until known.
+   */
+  requested: number | null
   /** The bridge direction, as last read (GD) or set; null until known */
   direction: MotorDirection | null
   /**
@@ -13,6 +18,11 @@ export interface DirectMotor {
    * that succeeds. A new object for each failure, as useCtrl's rpmError.
    */
   dutyError: { message: string } | null
+  /**
+   * A new object on each Stop. Passed to the dial as its error (with dutyError),
+   * so it drops a value of its own that was never sent and shows the hub's.
+   */
+  dialReset: object | null
   /** Why the last read or direction set failed, if it did */
   error: string | null
 }
@@ -27,11 +37,18 @@ interface DirectStore {
    * in flight at a time, and only the latest value given meanwhile is sent next.
    */
   setDutyLive: (id: MotorId, duty: number) => void
+  /**
+   * The Stop button: 0% straight away. Dial values not yet sent are dropped, so
+   * at most the one set already in flight goes out before it.
+   */
+  stop: (id: MotorId) => void
   /** Set the bridge direction (MOTOR D); a failure lands in error */
   setDirection: (id: MotorId, direction: MotorDirection) => Promise<void>
 }
 
-const UNKNOWN: DirectMotor = { duty: null, direction: null, dutyError: null, error: null }
+const UNKNOWN: DirectMotor = {
+  duty: null, requested: null, direction: null, dutyError: null, dialReset: null, error: null
+}
 
 // setDutyLive()'s coalescing, per motor: the value still to send, and whether a send is running.
 const pendingDuty: Partial<Record<MotorId, number>> = {}
@@ -50,13 +67,14 @@ export const useDirect = create<DirectStore>((set, get) => {
     load: async (id) => {
       try {
         const r = await window.api.motor.get(id)
-        patch(id, { duty: r.duty, direction: r.direction, error: null })
+        patch(id, { duty: r.duty, requested: r.duty, direction: r.direction, error: null })
       } catch (e) {
         patch(id, { error: errorMessage(e) })
       }
     },
     setDutyLive: (id, duty) => {
       pendingDuty[id] = duty
+      patch(id, { requested: duty })
       if (dutyInFlight[id]) return
       dutyInFlight[id] = true
       void (async () => {
@@ -77,6 +95,12 @@ export const useDirect = create<DirectStore>((set, get) => {
         }
         dutyInFlight[id] = false
       })()
+    },
+    // setDutyLive() already does it: its pending value is a single slot, so 0
+    // replaces whatever the dial left there.
+    stop: (id) => {
+      patch(id, { dutyError: null, dialReset: {} })
+      get().setDutyLive(id, 0)
     },
     setDirection: async (id, direction) => {
       try {
