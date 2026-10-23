@@ -1,7 +1,7 @@
 import { app, ipcMain, WebContents } from 'electron'
 import {
-  CommsConfig, CommsState, ControlHubSettings, CTRL_RPM_MAX, CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, IPC,
-  LIFT_DISTANCE_MAX, LiftDirection, MotorDirection, MotorId, MotorReadback, MotorSample, MqttLogLine, PingReport
+  CommsConfig, CommsState, ControlHubSettings, CTRL_RPM_MAX, CtrlDirection, CtrlReadback, CtrlSettings, HubClockReading,
+  HubSocket, IPC, LIFT_DISTANCE_MAX, LiftDirection, MotorDirection, MotorId, MotorReadback, MotorSample, MqttLogLine, PingReport
 } from '@shared/types'
 import { getSettings, updateSettings } from '../settings'
 import { MqttTransport } from './mqtt'
@@ -262,6 +262,12 @@ class CommsHub {
     this.hubClockTimer = null
   }
 
+  async rtcGet(): Promise<HubClockReading> {
+    if (!this.transport) throw new Error('Not connected')
+    if (!this.transport.rtcGet) throw new Error('The hub clock needs a serial or MQTT connection')
+    return this.transport.rtcGet()
+  }
+
   private flush(): void {
     if (this.pending.length > 0) {
       const batch = this.pending
@@ -343,4 +349,5 @@ export function registerCommsIpc(): void {
   ipcMain.handle(IPC.liftDown, (_e, maxEdges: number) => commsHub.liftDown(Number(maxEdges)))
   ipcMain.handle(IPC.liftStop, () => commsHub.liftStop())
   ipcMain.handle(IPC.liftPing, () => commsHub.liftPing())
+  ipcMain.handle(IPC.rtcGet, () => commsHub.rtcGet())
 }

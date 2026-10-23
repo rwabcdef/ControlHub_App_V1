@@ -1,5 +1,5 @@
 import { connect, MqttClient } from 'mqtt'
-import { CtrlDirection, CtrlReadback, CtrlSettings, HubClockSetResult, HubSocket, MotorDirection, MotorId, MotorReadback, LiftDirection, MqttConfig, PingReport } from '@shared/types'
+import { CtrlDirection, CtrlReadback, CtrlSettings, HubClockReading, HubClockSetResult, HubSocket, MotorDirection, MotorId, MotorReadback, LiftDirection, MqttConfig, PingReport } from '@shared/types'
 import { HubLink } from './hubLink'
 import { Transport, TransportEvents } from './transport'
 
@@ -164,5 +164,10 @@ export class MqttTransport implements Transport {
   rtcSet(date: Date): Promise<HubClockSetResult> {
     if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
     return this.link.rtcSet(date)
+  }
+
+  rtcGet(): Promise<HubClockReading> {
+    if (!this.link || !this.client?.connected) return Promise.reject(new Error('MQTT not connected'))
+    return this.link.rtcGet()
   }
 }

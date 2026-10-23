@@ -72,7 +72,7 @@ subscription in preload.
   `CTRL0` (status frames in → telemetry samples + hub state; controller settings and
   Control run commands `BS`/`BX`/`BD` out), `MOTOR` (the Direct page, below),
   `LIFT0` (MQTT only) and `RTC00` (the hub's clock: `S<yyyymmddhhmmss>`, answered
-  `S1`/`S0` on the ack). Both the serial and
+  `S1`/`S0` on the ack; `G` reads it, for the Dev page's hub clock panel). Both the serial and
   MQTT transports use it. When a status frame shows a new run, it reads who started it
   with `BGO`.
 - `comms/serlink/` is a TypeScript port of SerLink (`Frame.ts`, `SerLink.ts`) that

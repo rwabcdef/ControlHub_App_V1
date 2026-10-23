@@ -1,5 +1,5 @@
 import {
-  CtrlDirection, CtrlReadback, CtrlSettings, HubClockSetResult, HubSocket, HubState, LiftDirection, LiftStatus, MotorDirection, MotorId,
+  CtrlDirection, CtrlReadback, CtrlSettings, HubClockReading, HubClockSetResult, HubSocket, HubState, LiftDirection, LiftStatus, MotorDirection, MotorId,
   MotorReadback, MotorSample, MqttLogLine, PingReport
 } from '@shared/types'
 
@@ -53,4 +53,6 @@ export interface Transport {
   liftPing?(): Promise<PingReport>
   /** Set the hub's clock to `date`, local time (RTC00 S); only on links to the hub */
   rtcSet?(date: Date): Promise<HubClockSetResult>
+  /** Read the hub's clock (RTC00 G); only on links to the hub */
+  rtcGet?(): Promise<HubClockReading>
 }

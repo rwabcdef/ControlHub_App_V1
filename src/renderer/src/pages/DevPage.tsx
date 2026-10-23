@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Box, Button, Checkbox, FormControlLabel, Grid, Stack, TextField, Tooltip, Typography } from '@mui/material'
 import SendIcon from '@mui/icons-material/Send'
-import type { HubSocket } from '@shared/types'
+import type { HubClockReading, HubSocket } from '@shared/types'
 import { Panel } from '../components/Panel'
 import { useComms } from '../state/comms'
 import { errorMessage } from '../util'
@@ -9,7 +9,7 @@ import { errorMessage } from '../util'
 /** Sends kept in each socket's history */
 const HISTORY = 20
 
-/** Dev tools: raw data to the hub's SerLink sockets. */
+/** Dev tools: raw data to the hub's SerLink sockets, and a read of its clock. */
 export function DevPage(): React.JSX.Element {
   return (
     <Grid container spacing={1.5}>
@@ -18,6 +18,9 @@ export function DevPage(): React.JSX.Element {
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
         <SocketSender protocol="CTRL0" placeholder="e.g. BGA" defaultAck />
+      </Grid>
+      <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+        <HubClockPanel />
       </Grid>
     </Grid>
   )
@@ -112,6 +115,50 @@ function SocketSender({ protocol, placeholder, defaultAck, mqttOnly }: SocketSen
             ))}
           </Box>
         )}
+      </Stack>
+    </Panel>
+  )
+}
+
+/**
+ * The hub's clock, read on demand with RTC00 G (G120261023143007). The PC
+ * apps set it once per run on connecting - Config -> ControlHub, "Set hub
+ * date time on app launch".
+ */
+function HubClockPanel(): React.JSX.Element {
+  const comms = useComms((s) => s.state)
+  const [reading, setReading] = useState<HubClockReading | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Why Get is disabled, if it is
+  const blocked =
+    comms.status !== 'connected' ? 'Connect first'
+      : comms.kind === 'sim' ? 'Needs a serial or MQTT connection' : ''
+
+  const onGet = (): void => {
+    if (blocked || busy) return
+    setBusy(true)
+    setError(null)
+    window.api.rtc
+      .get()
+      .then(setReading)
+      .catch((e) => setError(errorMessage(e)))
+      .finally(() => setBusy(false))
+  }
+
+  return (
+    <Panel title="hub clock">
+      <Stack spacing={1.5}>
+        <TextField label="Date / time" size="small" fullWidth value={reading?.dateTime ?? ''}
+          error={!!error}
+          helperText={error ?? (reading && !reading.isSet ? 'Not set since power up' : "The hub's local time")}
+          slotProps={{ htmlInput: { readOnly: true, style: { fontFamily: 'monospace' } } }} />
+        <Tooltip title={blocked}>
+          <span style={{ alignSelf: 'flex-start' }}>
+            <Button variant="contained" loading={busy} disabled={!!blocked} onClick={onGet}>Get</Button>
+          </span>
+        </Tooltip>
       </Stack>
     </Panel>
   )

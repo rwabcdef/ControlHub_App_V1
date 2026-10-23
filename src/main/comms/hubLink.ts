@@ -7,6 +7,7 @@ import {
   CtrlDirection,
   CtrlReadback,
   CtrlSettings,
+  HubClockReading,
   HubClockSetResult,
   HubSocket,
   HubState,
@@ -324,6 +325,19 @@ export class HubLink {
     if (data === 'S1') return 'ok'
     if (data === 'S0') return 'refused'
     throw new Error(`${RTC_PROTOCOL}: unexpected S reply "${data}"`)
+  }
+
+  /**
+   * Read the hub's clock: RTC00T571001G -> G120261023143007, i.e.
+   * G<1|0><yyyymmddhhmmss> - 1 if set since power up, 0 if still counting
+   * from 2000-01-01. Rejects on a plain ACK_OK (firmware without a clock).
+   */
+  async rtcGet(): Promise<HubClockReading> {
+    const data = checkResult(RTC_PROTOCOL, await this.rtc.sendData('G', true))
+    if (data === undefined) throw new Error(`The hub has no ${RTC_PROTOCOL} socket (firmware without a clock)`)
+    const m = /^G([01])(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(data)
+    if (!m) throw new Error(`${RTC_PROTOCOL}: unexpected G reply "${data}"`)
+    return { isSet: m[1] === '1', dateTime: `${m[2]}-${m[3]}-${m[4]} ${m[5]}:${m[6]}:${m[7]}` }
   }
 
   /** SerLink PING the hub's LIFT0 socket (LIFT0S...PING). Never rejects once sent. */

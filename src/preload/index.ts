@@ -7,6 +7,7 @@ import type {
   CtrlReadback,
   CtrlSettings,
   DirEntry,
+  HubClockReading,
   HubSocket,
   HubState,
   LiftDirection,
@@ -102,6 +103,11 @@ const api = {
     /** SerLink PING the hub's LIFT0 socket (MQTT only) */
     ping: (): Promise<PingReport> => ipcRenderer.invoke(IPC.liftPing),
     onStatus: (cb: (status: LiftStatus) => void) => on(IPC.liftStatus, cb)
+  },
+
+  rtc: {
+    /** Read the hub's clock (RTC00 G) */
+    get: (): Promise<HubClockReading> => ipcRenderer.invoke(IPC.rtcGet)
   },
 
   fs: {

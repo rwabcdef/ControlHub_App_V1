@@ -185,6 +185,14 @@ export const DEFAULT_CONTROL_HUB_SETTINGS: ControlHubSettings = {
  */
 export type HubClockSetResult = 'ok' | 'refused' | 'noSocket'
 
+/** RTC00 G's answer, e.g. G120261023143007 */
+export interface HubClockReading {
+  /** Set since the hub's last power up; false = still counting from 2000-01-01 00:00:00 */
+  isSet: boolean
+  /** The hub's local time as it reads it, 'yyyy-mm-dd hh:mm:ss' (no timezone - it has none) */
+  dateTime: string
+}
+
 /** One line of MQTT traffic, for the MQTT log page */
 export interface MqttLogLine {
   /** Wall clock, ms since the epoch */
@@ -249,6 +257,8 @@ export const IPC = {
   liftDown: 'lift:down',
   liftStop: 'lift:stop',
   liftPing: 'lift:ping',
+  /** Read the hub's clock (RTC00 G) - Dev page */
+  rtcGet: 'rtc:get',
   /** main -> renderer: LiftStatus */
   liftStatus: 'lift:status',
   /** Raw data to a hub socket (Dev page) */
