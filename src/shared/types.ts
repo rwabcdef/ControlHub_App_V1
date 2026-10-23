@@ -164,12 +164,26 @@ export interface ControlHubSettings {
   liftDistance: number
   /** Top of the dashboard's speed dial, RPM (1..CTRL_RPM_MAX) */
   dialRpmMax: number
+  /**
+   * Set the hub's clock (RTC00 S) to this PC's local time once per app run,
+   * on the first connection to the hub that takes it. The hub has no clock
+   * battery, so it loses the time when powered off.
+   */
+  setHubTimeOnLaunch: boolean
 }
 
 export const DEFAULT_CONTROL_HUB_SETTINGS: ControlHubSettings = {
   liftDistance: 100,
-  dialRpmMax: 300
+  dialRpmMax: 300,
+  setHubTimeOnLaunch: true
 }
+
+/**
+ * RTC00 S's outcome: taken (S1); refused (S0 - a date the hub can't hold,
+ * outside 2000..2099); or no RTC00 socket on the hub (a plain ACK_OK, from
+ * firmware without a clock).
+ */
+export type HubClockSetResult = 'ok' | 'refused' | 'noSocket'
 
 /** One line of MQTT traffic, for the MQTT log page */
 export interface MqttLogLine {

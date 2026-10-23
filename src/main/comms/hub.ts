@@ -18,6 +18,8 @@ const MAX_PENDING = 20_000
 const MAX_PENDING_LOG = 5_000
 /** Trace SerLink traffic to the terminal and the renderer's DevTools console: in dev, or with SERLINK_DEBUG set. */
 const SERLINK_TRACE = !app.isPackaged || !!process.env.SERLINK_DEBUG
+/** Until the hub's clock has been set this app run, try again this often while connected (see setHubClock) */
+const HUB_CLOCK_RETRY_MS = 10_000
 
 /**
  * Owns the active transport and forwards telemetry to the renderer.
@@ -31,6 +33,10 @@ class CommsHub {
   private flushTimer: NodeJS.Timeout | null = null
   private t0 = 0
   private state: CommsState = { status: 'disconnected', kind: getSettings().comms.kind }
+  /** The hub's clock has been dealt with this app run - set, or found not settable */
+  private hubClockDone = false
+  private hubClockBusy = false
+  private hubClockTimer: NodeJS.Timeout | null = null
 
   attach(wc: WebContents): void {
     this.target = wc
@@ -84,7 +90,11 @@ class CommsHub {
           }
         : undefined,
       error: (err) => live() && this.setState({ status: 'error', kind: cfg.kind, error: err.message }),
-      reconnected: () => live() && this.setState({ status: 'connected', kind: cfg.kind }),
+      reconnected: () => {
+        if (!live()) return
+        this.setState({ status: 'connected', kind: cfg.kind })
+        if (transport) void this.setHubClock(transport)
+      },
       close: () => {
         if (live()) void this.disconnect()
       }
@@ -108,11 +118,14 @@ class CommsHub {
     }
     this.flushTimer = setInterval(() => this.flush(), FLUSH_MS)
     this.setState({ status: 'connected', kind: cfg.kind })
+    this.startHubClock(transport)
   }
 
   async disconnect(): Promise<void> {
     if (this.flushTimer) clearInterval(this.flushTimer)
     this.flushTimer = null
+    if (this.hubClockTimer) clearInterval(this.hubClockTimer)
+    this.hubClockTimer = null
     const t = this.transport
     this.transport = null
     if (t) {
@@ -205,6 +218,50 @@ class CommsHub {
     return this.transport.liftPing()
   }
 
+  /**
+   * Config -> ControlHub "Set hub date time on app launch" (on by default):
+   * set the hub's clock (RTC00 S) to this PC's local time, once per app run.
+   * Tried as soon as a connection opens and then every HUB_CLOCK_RETRY_MS
+   * while it stays open, because the hub may not be up yet - over MQTT the
+   * broker connects whether or not the hub is there - until the hub
+   * answers. S0 (refused) or no RTC00 socket ends it too: a retry would
+   * get the same answer. Not on the simulator, which has no rtcSet.
+   */
+  private startHubClock(transport: Transport): void {
+    if (this.hubClockDone || !transport.rtcSet) return
+    void this.setHubClock(transport)
+    this.hubClockTimer = setInterval(() => void this.setHubClock(transport), HUB_CLOCK_RETRY_MS)
+  }
+
+  private async setHubClock(transport: Transport): Promise<void> {
+    if (this.hubClockDone || this.hubClockBusy || this.transport !== transport || !transport.rtcSet) return
+    // Read each time: "on launch" means the setting as it is at the first
+    // chance, so switching it on later in the run does nothing until the next.
+    if (!getSettings().controlHub.setHubTimeOnLaunch) {
+      this.endHubClock()
+      return
+    }
+    this.hubClockBusy = true
+    try {
+      const now = new Date()
+      const result = await transport.rtcSet(now)
+      if (result === 'ok') console.log(`[hub clock] set to ${now.toLocaleString()}`)
+      else if (result === 'refused') console.warn(`[hub clock] the hub refused ${now.toLocaleString()}`)
+      else console.warn('[hub clock] the hub has no RTC00 socket (firmware without a clock)')
+      this.endHubClock()
+    } catch {
+      // No ack (hub not up yet) or the link went: the next try, or the next connection, goes again.
+    } finally {
+      this.hubClockBusy = false
+    }
+  }
+
+  private endHubClock(): void {
+    this.hubClockDone = true
+    if (this.hubClockTimer) clearInterval(this.hubClockTimer)
+    this.hubClockTimer = null
+  }
+
   private flush(): void {
     if (this.pending.length > 0) {
       const batch = this.pending
@@ -265,6 +322,10 @@ export function registerCommsIpc(): void {
         throw new Error(`Lift distance must be a whole number from 1 to ${LIFT_DISTANCE_MAX}`)
       }
       next.liftDistance = liftDistance
+    }
+    if (s?.setHubTimeOnLaunch !== undefined) {
+      if (typeof s.setHubTimeOnLaunch !== 'boolean') throw new Error('Set hub date time on app launch must be true or false')
+      next.setHubTimeOnLaunch = s.setHubTimeOnLaunch
     }
     if (s?.dialRpmMax !== undefined) {
       const dialRpmMax = Number(s.dialRpmMax)

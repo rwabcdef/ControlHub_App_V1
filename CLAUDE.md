@@ -70,8 +70,9 @@ subscription in preload.
   transport are ignored (`live()`).
 - `comms/hubLink.ts` (`HubLink`) is the hub's SerLink sockets over any line-oriented link:
   `CTRL0` (status frames in → telemetry samples + hub state; controller settings and
-  Control run commands `BS`/`BX`/`BD` out), `MOTOR` (the Direct page, below) and
-  `LIFT0` (MQTT only). Both the serial and
+  Control run commands `BS`/`BX`/`BD` out), `MOTOR` (the Direct page, below),
+  `LIFT0` (MQTT only) and `RTC00` (the hub's clock: `S<yyyymmddhhmmss>`, answered
+  `S1`/`S0` on the ack). Both the serial and
   MQTT transports use it. When a status frame shows a new run, it reads who started it
   with `BGO`.
 - `comms/serlink/` is a TypeScript port of SerLink (`Frame.ts`, `SerLink.ts`) that
@@ -128,8 +129,13 @@ broker, see the hub README's Norton firewall note.
   it during a Lift move (the `BGR` read back is the check), so the dial is disabled then,
   and in a run the remote started (its pot sets that speed).
 - In the app (`main/settings.ts` → `userData/settings.json`, `state/controlHub.ts`): the
-  lift distance and the dial's max speed (`dialRpmMax`), also on Config → ControlHub; and
-  the comms config.
+  lift distance, the dial's max speed (`dialRpmMax`) and `setHubTimeOnLaunch`, also on
+  Config → ControlHub; and the comms config.
+- **Hub clock**: with `setHubTimeOnLaunch` on (the default), `CommsHub.setHubClock()`
+  (`comms/hub.ts`) sets the hub's RTC to this PC's local time (RTC00 `S`) once per app
+  run. It tries when a connection opens and every 10 s after that, until the hub
+  answers (`S1`; `S0` or no socket also end it). The hub has no clock battery, so the
+  time is lost when it is powered off.
 - In the renderer's localStorage (`state/display.ts`): display preferences.
 
 ### Direct page

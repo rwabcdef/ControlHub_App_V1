@@ -1,5 +1,5 @@
 import {
-  CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, HubState, LiftDirection, LiftStatus, MotorDirection, MotorId,
+  CtrlDirection, CtrlReadback, CtrlSettings, HubClockSetResult, HubSocket, HubState, LiftDirection, LiftStatus, MotorDirection, MotorId,
   MotorReadback, MotorSample, MqttLogLine, PingReport
 } from '@shared/types'
 
@@ -51,4 +51,6 @@ export interface Transport {
   liftStop?(): Promise<void>
   /** SerLink PING the LIFT0 socket; only on links that carry it */
   liftPing?(): Promise<PingReport>
+  /** Set the hub's clock to `date`, local time (RTC00 S); only on links to the hub */
+  rtcSet?(date: Date): Promise<HubClockSetResult>
 }

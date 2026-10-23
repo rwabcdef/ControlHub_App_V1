@@ -7,6 +7,7 @@ import {
   CtrlDirection,
   CtrlReadback,
   CtrlSettings,
+  HubClockSetResult,
   HubSocket,
   HubState,
   LIFT_DISTANCE_MAX,
@@ -32,6 +33,8 @@ export const CTRL_PROTOCOL = 'CTRL0'
 export const MOTOR_PROTOCOL = 'MOTOR'
 /** The hub's lift socket - only on its MQTT link (SerLink2) */
 export const LIFT_PROTOCOL = 'LIFT0'
+/** The hub's real time clock socket - on both its links (uart2 and MQTT) */
+export const RTC_PROTOCOL = 'RTC00'
 /** The only lift on the remote hub */
 const LIFT_ID = 'B'
 
@@ -51,6 +54,8 @@ export class HubLink {
   /** Sends only - the hub never sends MOTOR frames unasked */
   readonly motor: Socket
   readonly lift: Socket | null
+  /** Sends only - the hub never sends RTC00 frames unasked */
+  readonly rtc: Socket
   /** The hub's state as last reported, to spot a change of mode */
   private hub: HubState | null = null
 
@@ -74,6 +79,7 @@ export class HubLink {
           if (s) this.ev.lift(s)
         })
       : null
+    this.rtc = this.serLink.acquireSocket(RTC_PROTOCOL)
   }
 
   /** Handle one received line: a SerLink frame, or else plain JSON / CSV telemetry. */
@@ -305,6 +311,21 @@ export class HubLink {
     return checkResult(protocol, await socket.sendData(payload, ack))
   }
 
+  /**
+   * Set the hub's clock to `date`, as this PC's local time, 24 hour:
+   * RTC00T570015S20261023143005. Done on the ack, so the answer says
+   * whether it was taken: S1 -> 'ok', S0 -> 'refused' (outside 2000..2099).
+   * A plain ACK_OK -> 'noSocket' (firmware without a clock). Rejects with
+   * no ack.
+   */
+  async rtcSet(date: Date): Promise<HubClockSetResult> {
+    const data = checkResult(RTC_PROTOCOL, await this.rtc.sendData(`S${formatHubDateTime(date)}`, true))
+    if (data === undefined) return 'noSocket'
+    if (data === 'S1') return 'ok'
+    if (data === 'S0') return 'refused'
+    throw new Error(`${RTC_PROTOCOL}: unexpected S reply "${data}"`)
+  }
+
   /** SerLink PING the hub's LIFT0 socket (LIFT0S...PING). Never rejects once sent. */
   async liftPing(): Promise<PingReport> {
     if (!this.lift) throw new Error(`${LIFT_PROTOCOL} is only available over MQTT`)
@@ -362,6 +383,13 @@ const MOTOR_DIRECTION_TO_CHAR: Record<string, string | undefined> = {
 /** Only a fitted channel - the hub sends A to motorB until motorA exists. Untrusted input from the renderer. */
 function checkMotorId(id: MotorId): void {
   if (!MOTORS_FITTED.includes(id)) throw new Error(`Motor ${String(id)} is not fitted`)
+}
+
+/** Local time as RTC00's yyyymmddhhmmss, e.g. 20261023143005 */
+function formatHubDateTime(d: Date): string {
+  const two = (n: number): string => String(n).padStart(2, '0')
+  return `${String(d.getFullYear()).padStart(4, '0')}${two(d.getMonth() + 1)}${two(d.getDate())}`
+    + `${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}`
 }
 
 /** Gain as the hub's integer millionths; throws unless 0..CTRL_GAIN_MAX with at most 6 decimals. */

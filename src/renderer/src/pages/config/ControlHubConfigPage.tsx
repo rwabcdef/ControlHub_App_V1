@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Grid, MenuItem, Stack, TextField, Tooltip, Typography } from '@mui/material'
+import {
+  Alert, Button, FormControlLabel, Grid, MenuItem, Stack, Switch, TextField, Tooltip, Typography
+} from '@mui/material'
 import SaveIcon from '@mui/icons-material/Save'
 import {
   CTRL_DUTY_MAX, CTRL_DUTY_MIN, CTRL_GAIN_MAX, CTRL_GAIN_SCALE, CTRL_RPM_MAX, LIFT_DISTANCE_MAX
@@ -38,7 +40,8 @@ const sameGain = (a: number, b: number): boolean => Math.round(a * CTRL_GAIN_SCA
  * gain, BM max duty, BR target speed - read on connecting, sent on Save) and
  * apply to Control runs and lift moves alike; none of them starts anything.
  * The dial's max speed and the lift distance are kept by the app, for the
- * dashboard's speed dial and lift buttons.
+ * dashboard's speed dial and lift buttons, and so is whether the app sets
+ * the hub's clock when it connects.
  */
 export function ControlHubConfigPage(): React.JSX.Element {
   return (
@@ -48,6 +51,7 @@ export function ControlHubConfigPage(): React.JSX.Element {
         help="RPM - the top of the dashboard's speed dial" />
       <AppSettingPanel title="Lift" field="liftDistance" label="Target distance" max={LIFT_DISTANCE_MAX}
         help="tacho edges (2 per revolution)" />
+      <HubClockPanel />
     </Stack>
   )
 }
@@ -196,6 +200,38 @@ function AppSettingPanel({ title, field, label, max, help }: {
           error={invalid}
           helperText={invalid ? `1 to ${max}` : `${help} - saved on leaving the box`}
           slotProps={{ htmlInput: { min: 1, max, step: 1 } }} />
+        {error && <Alert severity="error" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
+      </Stack>
+    </Panel>
+  )
+}
+
+/**
+ * Whether the app sets the hub's clock (RTC00 S) to this PC's local time
+ * once per run, on the first connection the hub answers - see
+ * setHubClock() in main/comms/hub.ts. Saved at once (settings.json).
+ */
+function HubClockPanel(): React.JSX.Element {
+  const enabled = useControlHub((s) => s.setHubTimeOnLaunch)
+  const save = useControlHub((s) => s.save)
+  const [error, setError] = useState<string | null>(null)
+
+  const onChange = (checked: boolean): void => {
+    setError(null)
+    save({ setHubTimeOnLaunch: checked }).catch((e) => setError(errorMessage(e)))
+  }
+
+  return (
+    <Panel title="Hub clock">
+      <Stack spacing={1}>
+        <FormControlLabel label="Set hub date time on app launch"
+          control={<Switch checked={enabled} onChange={(e) => onChange(e.target.checked)} />} />
+        <Typography variant="caption" color="text.secondary">
+          Sets the hub's clock to this PC's local time once each time the app runs, on the first
+          connection the hub answers. The hub has no clock battery, so it loses the time when powered
+          off (a reset keeps it). The hub stamps its SD card files with this clock. The setting is read
+          at the run's first connection to the hub.
+        </Typography>
         {error && <Alert severity="error" variant="outlined" onClose={() => setError(null)}>{error}</Alert>}
       </Stack>
     </Panel>

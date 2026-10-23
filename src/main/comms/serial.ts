@@ -1,5 +1,5 @@
 import { ReadlineParser, SerialPort } from 'serialport'
-import { CtrlDirection, CtrlReadback, CtrlSettings, HubSocket, MotorDirection, MotorId, MotorReadback, SerialConfig, SerialPortInfo } from '@shared/types'
+import { CtrlDirection, CtrlReadback, CtrlSettings, HubClockSetResult, HubSocket, MotorDirection, MotorId, MotorReadback, SerialConfig, SerialPortInfo } from '@shared/types'
 import { HubLink } from './hubLink'
 import { Transport, TransportEvents } from './transport'
 
@@ -97,6 +97,11 @@ export class SerialTransport implements Transport {
   motorSetDirection(id: MotorId, direction: MotorDirection): Promise<MotorDirection> {
     if (!this.link || !this.port?.isOpen) return Promise.reject(new Error('Serial port not open'))
     return this.link.motorSetDirection(id, direction)
+  }
+
+  rtcSet(date: Date): Promise<HubClockSetResult> {
+    if (!this.link || !this.port?.isOpen) return Promise.reject(new Error('Serial port not open'))
+    return this.link.rtcSet(date)
   }
 
   private writeLine(port: SerialPort, line: string): Promise<void> {
